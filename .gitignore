@@ -1,0 +1,101 @@
+# ==========================================
+# 🔒 ARCHIVOS SENSIBLES Y CONFIGURACIONES
+# ==========================================
+.env
+.env.local
+.env.*.local
+*.env
+
+# Archivos de configuración local (IDE)
+.vscode/
+.idea/
+*.iml
+
+# ==========================================
+# 🧠 DEPENDENCIAS
+# ==========================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+.pnpm-debug.log
+
+# ==========================================
+# 🏗️ COMPILADOS Y BUILD
+# ==========================================
+dist/
+build/
+.next/
+out/
+.cache/
+coverage/
+tmp/
+temp/
+.DS_Store
+
+# ==========================================
+# ⚙️ LOGS
+# ==========================================
+logs/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# ==========================================
+# 📸 IMÁGENES Y SUBIDAS TEMPORALES
+# ==========================================
+uploads/
+public/uploads/
+__pycache__/
+
+# ==========================================
+# 🧰 SISTEMAS OPERATIVOS
+# ==========================================
+Thumbs.db
+.DS_Store
+ehthumbs.db
+Icon?
+Desktop.ini
+
+# ==========================================
+# 🧪 TESTS Y COBERTURA
+# ==========================================
+coverage/
+*.lcov
+jest-html-reporters-*.html
+
+# ==========================================
+# 🚀 DEPLOY / PM2 / PRODUCCIÓN
+# ==========================================
+*.pid
+*.seed
+*.pid.lock
+pm2.log
+pm2.pid
+logs/
+.env.production.local
+*.pem
+
+# ==========================================
+# 💾 BASES DE DATOS TEMPORALES
+# ==========================================
+*.sqlite
+*.sqlite3
+*.db
+*.bak
+*.sql
+*.tar
+*.zip
+*.gz
+
+# ==========================================
+# 🖼️ CLOUDINARY / SUBIDAS TEMPORALES
+# ==========================================
+uploads/
+public/uploads/
+temp_uploads/

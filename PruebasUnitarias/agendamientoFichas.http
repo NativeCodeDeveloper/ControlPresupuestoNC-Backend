@@ -1,0 +1,16 @@
+### POST // FUNCION PARA INSERTAR NUEVA PORTADA
+POST http://localhost:3001/reservaPacientes/insertarReservaPacienteFicha
+Content-Type: application/json
+
+{
+  "nombrePaciente": "NICOLAS",
+  "apellidoPaciente": "DE LOS SANTOS",
+  "rut": "1",
+  "telefono": "8768768756",
+  "email": "tm.nicolasmachuca@gmail.com",
+  "fechaInicio": "2026-02-04",
+  "horaInicio": "10:40",
+  "fechaFinalizacion": "2026-02-04",
+  "horaFinalizacion": "12:20",
+  "estadoReserva": "reservada"
+}

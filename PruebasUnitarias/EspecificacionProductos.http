@@ -1,0 +1,61 @@
+###
+GET http://localhost:3001/especificacionProducto/seleccionarEspecificacion
+
+
+### POST pruebas de insertcion
+POST http://localhost:3001/especificacionProducto/insertarEspecificacion
+Content-Type: application/json
+
+{
+  "descripcionEspecificacion": "Ejemplo de especificación",
+  "id_subsubcategoria": 123
+}
+
+
+###POST para realizar la actualziacion
+POST http://localhost:3001/especificacionProducto/actualizarEspecificacion
+Content-Type: application/json
+
+{
+"descripcionEspecificacion": "Nuevo valor de descripción",
+"id_subsubcategoria": 24,
+"id_EspecificacionProducto": 40
+}
+
+
+
+
+### POST para seleccionar especificamente
+POST http://localhost:3001/especificacionProducto/seleccionarEspecificacionPorId
+Content-Type: application/json
+
+{
+  "id_EspecificacionProducto": 1
+}
+
+
+### POST para eliminar una especificacion
+POST http://localhost:3001/especificacionProducto/eliminarEspecificacion
+Content-Type: application/json
+
+{
+  "id_EspecificacionProducto": 1
+}
+
+
+
+
+
+
+### POST para seleccior por el id de la subsubcategoria
+POST http://localhost:3001/especificacionProducto/seleccionarEspecificacionPorSubSubCategoria
+Content-Type: application/json
+
+
+{
+  "id_subsubcategoria": 23
+}
+
+
+
+

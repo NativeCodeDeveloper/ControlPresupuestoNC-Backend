@@ -1,0 +1,53 @@
+### POST // FUNCION PARA INSERTAR NUEVA PORTADA
+POST http://localhost:3001/carruselPortada/insertarCarruselPortada
+Content-Type: application/json
+
+{
+"tituloPortadaCarrusel": "Ejemplo de Título",
+"descripcionPublicacionesPortada": "Descripción de la portada de ejemplo.",
+"imagenPortada": "https://ejemplo.com/imagen.jpg"
+}
+
+
+
+
+### POST // FUNCION PARA EDITAR NUEVA PORTADA
+POST http://localhost:3001/carruselPortada/actualizarCarruselPortada
+Content-Type: application/json
+
+{
+  "tituloPortadaCarrusel": "Nuevo título",
+  "descripcionPublicacionesPortada": "Descripción actualizada",
+  "id_publicacionesPortada": 42
+}
+
+
+
+### POST // FUNCION PARA ELIMINADO LOGICO DE PORTADA
+POST http://localhost:3001/carruselPortada/eliminarCarruselPortada
+Content-Type: application/json
+
+{
+  "id_publicacionesPortada": 0
+}
+
+
+###  GET // FUNCION PARA SELECCIONAR TODAS LAS PORTADAS DIFERENTES DEL ESTADO CERO
+GET http://localhost:3001/carruselPortada/seleccionarCarruselPortada
+
+
+
+### POST // FUNCION PARA SELECCIONAR LA PORTADA ESPECIFICA POR ID
+POST http://localhost:3001/carruselPortada/seleccionarCarruselPortadaporId
+Content-Type: application/json
+
+{
+"id_publicacionesPortada": "0"
+}
+
+
+
+
+
+
+

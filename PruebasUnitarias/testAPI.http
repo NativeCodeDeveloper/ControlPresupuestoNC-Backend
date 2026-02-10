@@ -1,0 +1,197 @@
+### GET request to example server
+GET  http://localhost:3001/titulo
+
+### GET request to example server
+GET  http://localhost:3001/publicaciones/seleccionarPublicaciones
+
+
+### POST request para insertar una publicación
+POST http://localhost:3001/publicaciones/insertarPublicacion
+Content-Type: application/json
+
+
+### POST request para insertar una publicación
+POST http://localhost:3001/publicaciones/insertarPublicacion
+Content-Type: application/json
+
+{
+  "descripcionPublicaciones": "Pruebas Backend ",
+  "imagenPublicaciones_primera": "https://res.cloudinary.com/dauhxormz/image/upload/v1758881048/aupwiecgf16ugbfj6lcb.png",
+  "imagenPublicaciones_segunda": "https://res.cloudinary.com/dauhxormz/image/upload/v1759400050/erwfvflfpst9edusuflu.png",
+  "imagenPublicaciones_tercera": "https://res.cloudinary.com/dauhxormz/image/upload/v1759490937/ovwldvotclndgpcd50da.png"
+}
+
+
+
+### POST request para eliminar una publicación
+POST http://localhost:3001/publicaciones/eliminarPublicacion
+Content-Type: application/json
+
+{
+  "id_publicaciones": 2
+}
+
+
+### POST Actualizar informacion de publicacion
+POST http://localhost:3001/publicaciones/actualizarPublicacion
+Content-Type: application/json
+
+{
+  "descripcionPublicaciones": "Pruebas Backend pruebas pruebitas",
+  "imagenPublicaciones_primera": "pruebas randomn 1",
+  "imagenPublicaciones_segunda": "pruebas random 2",
+  "imagenPublicaciones_tercera": "pruebas random 3",
+  "id_publicaciones": 2
+}
+
+
+### GET publicación específica
+GET http://localhost:3001/publicaciones/2
+
+
+
+
+
+
+### POST request para seleccionar por categoria los productos
+POST http://localhost:3001/producto/categoriaProducto
+Content-Type: application/json
+
+{
+  "categoriaProducto": 13
+}
+
+
+
+### GET request para seleccionar por categoria los productos
+GET http://localhost:3001/producto/ordenarMenor
+
+
+
+
+### POST request para maracr productos como oferta estado 3 en db
+POST http://localhost:3001/producto/marcarOferta
+Content-Type: application/json
+
+{
+  "id_producto" : 5
+}
+
+
+
+
+### POST request para maracr productos como oferta estado 3 en db
+POST http://localhost:3001/producto/insertarProducto
+Content-Type: application/json
+
+{
+  "tituloProducto": "PRUEBAS INTEGRACION BACKEND 11111",
+  "descripcionProducto": "Ine Jue dar un toque distintivo a tu estilo",
+  "valorProducto": 1000,
+  "categoriaProducto": 1,
+  "imagenProducto": "https://res.cloudinary.com/dauhxormz/image/upload/v1758884746/akahw0q6nrhlvkkuetf0.png"
+}
+
+
+
+### POST request para  productos similar en tituloProducto
+POST http://localhost:3001/producto/buscarSimilar
+Content-Type: application/json
+
+{
+  "tituloProducto": "coll"
+}
+
+### POST request para actualizar productos
+POST http://localhost:3001/producto/actualizarStock
+Content-Type: application/json
+
+{
+  "cantidadStock": 2,
+  "id_producto": 1
+}
+
+
+
+### POST request para insertar pedidos realizados
+POST http://localhost:3001/pedidos/ingresarNuevoPedido
+Content-Type: application/json
+
+{
+  "fecha_pedido": "2025-11-12",
+  "nombre_comprador": "Juan",
+  "apellidosComprador": " Pérez",
+  "telefono_comprador": "+56912345678",
+  "email_Comprador": "demo@gmail.com",
+  "identificacion_comprador": "12345678-9",
+  "direccion_despacho": "Av. Siempre Viva 742, Santiago",
+  "comuna": "Argentina",
+  "regionPais": "Argentina",
+  "comentarios": "Entregar entre 9:00 y 12:00",
+  "totalPagado": 111111,
+  "preference_id": 22222222222
+}
+
+
+
+### POST request para seleccionar Segun similitud de nombres
+POST http://localhost:3001/pedidos/seleccionarPorComprador
+Content-Type: application/json
+
+{
+  "nombre_comprador": "Car"
+}
+
+
+
+
+
+### POST request para seleccionar detalle se usa el id
+POST http://localhost:3001/pedidos/seleccionarDetalle
+Content-Type: application/json
+
+{
+  "id_pedido": 38
+}
+
+
+
+### POST request para seleccionar Segun ID pedidos detalles
+POST http://localhost:3001/pedidos/seleccionarPorid
+Content-Type: application/json
+
+{
+  "id_pedido": 1
+}
+
+
+### POST request para cambio de estado Segun ID pedidos detalles
+POST http://localhost:3001/pedidos/cambioEstado
+Content-Type: application/json
+
+{
+  "estado_pedido": "0",
+  "id_pedido": 1
+}
+
+
+### POST request para seleccionar segun el estado
+POST http://localhost:3001/pedidos/seleccionarPorEstados
+Content-Type: application/json
+
+{
+  "estado_pedido": 2
+}
+
+
+
+### POST request para seleccionar segun el estado
+POST http://localhost:3001/pacientes/eliminarPaciente
+Content-Type: application/json
+
+
+{
+  "id_paciente": 21
+}
+
+

@@ -1,0 +1,72 @@
+### GET request to example server
+POST http://localhost:3001/producto/insertarProducto
+Content-Type: application/json
+
+{
+  "tituloProducto": "Depilacion Intima XL PRUEBAS PRUEBAS",
+  "descripcionProducto": "Servicio de depilación íntima, formato XS: cuidado delicado y acabado profesional.",
+  "valorProducto": 14900,
+  "valor_previo": 12000,
+  "categoriaProducto": 49,
+  "subcategoria": 4,
+  "subsubcategoria": 2,
+  "imagenProducto": "https://picsum.photos/seed/depilacion1/800/600",
+  "imagenProductoSegunda": "https://picsum.photos/seed/depilacion2/800/600",
+  "imagenProductoTercera": "https://picsum.photos/seed/depilacion3/800/600",
+  "imagenProductoCuarta": "https://picsum.photos/seed/depilacion4/800/600",
+  "especificacionProducto": 4
+}
+
+
+
+
+
+
+### POST request to example server
+POST http://localhost:3001/producto/actualizarProducto
+Content-Type: application/json
+
+{
+  "tituloProducto": "Nombre del producto",
+  "descripcionProducto": "Descripción del producto",
+  "valorProducto": 1000,
+  "valor_previo": 1200,
+  "categoriaProducto": 48,
+  "subcategoria": 4,
+  "subsubcategoria": 4,
+  "imagenProducto": "url_imagen_principal.jpg",
+  "imagenProductoSegunda": "url_imagen_2.jpg",
+  "imagenProductoTercera": "url_imagen_3.jpg",
+  "imagenProductoCuarta": "url_imagen_4.jpg",
+  "especificacionProducto": 4,
+  "id_producto": 152
+}
+
+
+
+
+
+
+
+
+
+
+### POST request to example server
+POST http://localhost:3001/producto/seleccionarPorSubcategoria
+Content-Type: application/json
+
+{
+  "subCategoria": 24
+}
+
+
+
+
+
+### POST request to example server
+POST http://localhost:3001/producto/seleccionarPorSubSubcategoria
+Content-Type: application/json
+
+{
+  "subsubcategoria": 2
+}

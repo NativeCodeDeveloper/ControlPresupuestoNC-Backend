@@ -1,0 +1,22 @@
+
+POST http://localhost:3001/correo/comprobante
+Content-Type: application/json
+
+{
+  "cliente": {
+    "nombre": "Juan Pérez",
+    "email": "tm.nicolasmachuca@gmail.com"
+  },
+  "venta": {
+    "codigo": "ORD-12345",
+    "total": 45990,
+    "medioPago": "Mercado Pago",
+    "fecha": "09-12-2025 10:32"
+  },
+  "productos": [
+    { "nombre": "Foco LED", "cantidad": 2, "precioUnitario": 12990 },
+    { "nombre": "Filtro de aire", "cantidad": 1, "precioUnitario": 20010 }
+  ]
+}
+
+

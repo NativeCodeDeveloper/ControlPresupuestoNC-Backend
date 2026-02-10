@@ -1,0 +1,61 @@
+### GET request para seleccionar todas las subcategorias
+GET http://localhost:3001/subcategorias/seleccionarSubCategoria
+
+
+### GET request para seleccionar todas las subcategorias
+POST http://localhost:3001/subcategorias/seleccionarSubCategoriaid
+Content-Type: application/json
+
+{
+  "id_subcategoria": 24
+}
+
+
+### POST request para actualizar
+POST http://localhost:3001/subcategorias/actualizarSubCategoria
+Content-Type: application/json
+
+{
+  "descripcionCategoria": "Promociónes Pruebas",
+  "imagenSubCategoria": "linkimagenpruebas",
+  "id_categoriaProducto": 49,
+  "id_subcategoria": 26
+}
+
+
+
+
+
+
+### POST request para insertar
+POST http://localhost:3001/subcategorias/insertarSubCategoria
+Content-Type: application/json
+
+{
+
+  "descripcionCategoria": "nueva prueba"
+}
+
+
+
+### POST request para insertar
+POST http://localhost:3001/subcategorias/eliminarSubCategoria
+Content-Type: application/json
+
+{
+  "id_subcategoria": 999
+}
+
+
+
+
+
+### POST request para insertar
+POST http://localhost:3001/subcategorias/seleccionarPorCategoria
+Content-Type: application/json
+
+{
+  "id_categoriaProducto": 48
+}
+
+

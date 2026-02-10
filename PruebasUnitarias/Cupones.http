@@ -1,0 +1,65 @@
+### GET request to example server
+GET http://localhost:3001/cupon/seleccionarCupones
+
+
+
+
+
+### GET request to example server
+POST http://localhost:3001/cupon/seleccionarCuponesId
+Content-Type: application/json
+
+{
+  "id_cupon" : 1
+}
+
+
+
+### GET request to example server
+POST http://localhost:3001/cupon/seleccionarCuponesCodigo
+Content-Type: application/json
+
+{
+  "codigoVerificadorCupon" : "NAVIDAD11"
+}
+
+
+
+### GET request to example server
+POST http://localhost:3001/cupon/insertarCupon
+Content-Type: application/json
+
+{
+  "nombreCupon": "PRUEBAS NUMERO 32",
+  "codigoVerificadorCupon": "PRUEBA2as12",
+  "objetivoCupon": "Campaña Meta Ads. Anuncios octubre",
+  "porcentajeDescuento": 30
+}
+
+
+
+
+### GET request to example server
+POST http://localhost:3001/cupon/actualizarCupon
+Content-Type: application/json
+
+{
+  "nombreCupon": "PRUEBAS NUMERO RANDOMN",
+  "codigoVerificadorCupon": "PRUEBA212",
+  "objetivoCupon": "Campaña Meta Ads. Anuncios octubre",
+  "porcentajeDescuento": 30,
+  "id_cupon" : 1
+}
+
+
+
+
+### GET request to example server
+POST http://localhost:3001/cupon/eliminarCupon
+Content-Type: application/json
+
+{
+  "id_cupon" : 1
+}
+
+
