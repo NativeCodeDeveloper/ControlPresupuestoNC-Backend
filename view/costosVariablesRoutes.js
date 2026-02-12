@@ -5,14 +5,14 @@ import CostosVariablesController from "../controller/CostosVariablesController.j
 // GET - Obtener todos los costos variables
 router.get('/', CostosVariablesController.obtenerCostosVariables);
 
-// GET - Obtener un costo variable por ID
-router.get('/:id', CostosVariablesController.obtenerCostoVariablePorId);
-
-// GET - Obtener costos variables por tipo
+// GET - Obtener costos variables por tipo (rutas específicas ANTES de /:id)
 router.get('/tipo/:tipo_costo_id', CostosVariablesController.obtenerCostosPorTipo);
 
 // GET - Obtener costos variables por proyecto
 router.get('/proyecto/:proyecto_id', CostosVariablesController.obtenerCostosPorProyecto);
+
+// GET - Obtener un costo variable por ID (genérico va AL FINAL)
+router.get('/:id', CostosVariablesController.obtenerCostoVariablePorId);
 
 // POST - Crear nuevo costo variable
 router.post('/', CostosVariablesController.crearCostoVariable);

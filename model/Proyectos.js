@@ -69,19 +69,30 @@ export default class Proyectos {
     }
 
     // CREAR NUEVO PROYECTO
-    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones) {
+    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones) {
         const conexion = DataBase.getInstance();
         const query = `INSERT INTO proyectos 
                        (codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
-                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
         const param = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
-                      email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones];
+                      email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega || null, observaciones];
         try {
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
-            throw new Error('Error al crear proyecto en la base de datos');
+            try {
+                // Compatibilidad con versiones anteriores del esquema.
+                const fallbackQuery = `INSERT INTO proyectos 
+                                       (codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
+                                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones)
+                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const fallbackParam = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente,
+                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones];
+                return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
+            } catch (_) {
+                throw new Error('Error al crear proyecto en la base de datos');
+            }
         }
     }
 

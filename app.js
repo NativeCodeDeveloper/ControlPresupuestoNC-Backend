@@ -11,6 +11,8 @@ import serviciosRoutes from "./view/serviciosRoutes.js";
 import configuracionRoutes from "./view/configuracionRoutes.js";
 import catalogosRoutes from "./view/catalogosRoutes.js";
 import retirosSociosRoutes from "./view/retirosSociosRoutes.js";
+import finanzasRoutes from "./view/finanzasRoutes.js";
+import inversionesRoutes from "./view/inversionesRoutes.js";
 import CatalogosController from "./controller/CatalogosController.js";
 
 // RUTAS ANTIGUAS - innovaDent (mantener por ahora)
@@ -63,6 +65,8 @@ app.use("/api/servicios", serviciosRoutes);
 app.use("/api/config/financiera", configuracionRoutes);
 app.use("/api/catalogos", catalogosRoutes);
 app.use("/api/socios", retirosSociosRoutes);
+app.use("/api/finanzas", finanzasRoutes);
+app.use("/api/inversiones", inversionesRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", CatalogosController.crearTipoCostoVariable);

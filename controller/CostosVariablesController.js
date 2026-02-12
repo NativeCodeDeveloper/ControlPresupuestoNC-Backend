@@ -66,7 +66,7 @@ export default class CostosVariablesController {
     // CREAR NUEVO COSTO VARIABLE
     static async crearCostoVariable(req, res) {
         try {
-            const { tipo_costo_id, tipo, concepto, monto, fecha, proyecto_id, comprobante_url, observaciones } = req.body;
+            const { tipo_costo_id, tipo, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones } = req.body;
 
             // Si no viene tipo_costo_id pero viene tipo (nombre), buscar o crear el tipo
             let tipoCostoIdFinal = tipo_costo_id;
@@ -90,7 +90,16 @@ export default class CostosVariablesController {
             }
 
             const costo = new CostosVariables();
-            const resultado = await costo.insertCostoVariable(tipoCostoIdFinal, conceptoFinal, monto, fecha, proyecto_id || null, comprobante_url, observaciones);
+            const resultado = await costo.insertCostoVariable(
+                tipoCostoIdFinal,
+                conceptoFinal,
+                monto,
+                fecha,
+                fecha_vencimiento || null,
+                proyecto_id || null,
+                comprobante_url,
+                observaciones
+            );
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -102,14 +111,24 @@ export default class CostosVariablesController {
     static async actualizarCostoVariable(req, res) {
         try {
             const { id } = req.params;
-            const { tipo_costo_id, concepto, monto, fecha, proyecto_id, comprobante_url, observaciones } = req.body;
+            const { tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones } = req.body;
 
             if (!id || !tipo_costo_id || !concepto || !monto) {
                 return res.status(404).json({ message: "Faltan datos requeridos" });
             }
 
             const costo = new CostosVariables();
-            const resultado = await costo.updateCostoVariable(id, tipo_costo_id, concepto, monto, fecha, proyecto_id, comprobante_url, observaciones);
+            const resultado = await costo.updateCostoVariable(
+                id,
+                tipo_costo_id,
+                concepto,
+                monto,
+                fecha,
+                fecha_vencimiento || null,
+                proyecto_id,
+                comprobante_url,
+                observaciones
+            );
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);

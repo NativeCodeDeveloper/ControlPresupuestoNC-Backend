@@ -8,6 +8,7 @@ export default class CostosVariables {
         concepto,
         monto,
         fecha,
+        fecha_vencimiento,
         comprobante_url,
         observaciones
     ) {
@@ -17,6 +18,7 @@ export default class CostosVariables {
         this.concepto = concepto;
         this.monto = monto;
         this.fecha = fecha;
+        this.fecha_vencimiento = fecha_vencimiento;
         this.comprobante_url = comprobante_url;
         this.observaciones = observaciones;
     }
@@ -91,30 +93,45 @@ export default class CostosVariables {
     }
 
     // CREAR NUEVO COSTO VARIABLE
-    async insertCostoVariable(tipo_costo_id, concepto, monto, fecha, proyecto_id, comprobante_url, observaciones) {
+    async insertCostoVariable(tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones) {
         const conexion = DataBase.getInstance();
-        const query = `INSERT INTO costos_variables (tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)`;
-        const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones];
+        const query = `INSERT INTO costos_variables (tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento, comprobante_url, observaciones)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+        const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones];
         try {
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
-            throw new Error('Error al crear costo variable en la base de datos');
+            try {
+                // Compatibilidad con BD sin columna fecha_vencimiento.
+                const fallbackQuery = `INSERT INTO costos_variables (tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones)
+                                      VALUES (?, ?, ?, ?, ?, ?, ?)`;
+                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones];
+                return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
+            } catch (_) {
+                throw new Error('Error al crear costo variable en la base de datos');
+            }
         }
     }
 
     // ACTUALIZAR COSTO VARIABLE
-    async updateCostoVariable(id, tipo_costo_id, concepto, monto, fecha, proyecto_id, comprobante_url, observaciones) {
+    async updateCostoVariable(id, tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones) {
         const conexion = DataBase.getInstance();
         const query = `UPDATE costos_variables SET tipo_costo_id = ?, proyecto_id = ?, concepto = ?, monto = ?, 
-                       fecha = ?, comprobante_url = ?, observaciones = ? WHERE id = ?`;
-        const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones, id];
+                       fecha = ?, fecha_vencimiento = ?, comprobante_url = ?, observaciones = ? WHERE id = ?`;
+        const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones, id];
         try {
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
-            throw new Error('Error al actualizar costo variable en la base de datos');
+            try {
+                const fallbackQuery = `UPDATE costos_variables SET tipo_costo_id = ?, proyecto_id = ?, concepto = ?, monto = ?, 
+                                       fecha = ?, comprobante_url = ?, observaciones = ? WHERE id = ?`;
+                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones, id];
+                return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
+            } catch (_) {
+                throw new Error('Error al actualizar costo variable en la base de datos');
+            }
         }
     }
 

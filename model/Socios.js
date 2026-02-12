@@ -1,5 +1,15 @@
 import DataBase from "../config/Database.js";
 
+const executeIfTableExists = async (connection, query, params = []) => {
+    try {
+        await connection.query(query, params);
+    } catch (error) {
+        if (error?.code !== "ER_NO_SUCH_TABLE") {
+            throw error;
+        }
+    }
+};
+
 export default class Socios {
     constructor(
         id,
@@ -69,13 +79,34 @@ export default class Socios {
     // ELIMINAR SOCIO
     async deleteSocio(id) {
         const conexion = DataBase.getInstance();
-        const query = 'DELETE FROM socios WHERE id = ?';
-        const param = [id];
+        const connection = await conexion.pool.getConnection();
         try {
-            const resultado = await conexion.ejecutarQuery(query, param);
+            await connection.beginTransaction();
+
+            // Limpiar dependencias históricas que bloquean el borrado por FK (ON DELETE RESTRICT).
+            await executeIfTableExists(
+                connection,
+                "DELETE FROM distribucion_mensual_socios WHERE socio_id = ?",
+                [id]
+            );
+            await executeIfTableExists(
+                connection,
+                "DELETE FROM retiros_socios WHERE socio_id = ?",
+                [id]
+            );
+
+            const [resultado] = await connection.query("DELETE FROM socios WHERE id = ?", [id]);
+            await connection.commit();
             return resultado;
         } catch (error) {
+            try {
+                await connection.rollback();
+            } catch (_) {
+                // noop
+            }
             throw new Error('Error al eliminar socio de la base de datos');
+        } finally {
+            connection.release();
         }
     }
 

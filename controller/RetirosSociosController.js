@@ -1,7 +1,26 @@
 import RetirosSocios from "../model/RetirosSocios.js";
+import { getPartnerAvailableAmount } from "../services/financeService.js";
 
 export default class RetirosSociosController {
     constructor() {}
+
+    // DISPONIBLE DE UN SOCIO EN EL PERIODO
+    static async obtenerDisponible(req, res) {
+        try {
+            const { id } = req.params;
+            if (!id) return res.status(400).json({ message: "ID de socio requerido" });
+
+            const disponible = await getPartnerAvailableAmount(id, req.query || {});
+            if (!disponible) {
+                return res.status(404).json({ message: "Socio no encontrado" });
+            }
+
+            return res.json(disponible);
+        } catch (error) {
+            console.error(error);
+            res.status(500).json({ message: "Error al obtener disponible del socio" });
+        }
+    }
 
     // OBTENER RETIROS DE UN SOCIO
     static async obtenerRetiros(req, res) {
@@ -24,11 +43,30 @@ export default class RetirosSociosController {
             const { id } = req.params;
             const { monto, amount, fecha_retiro, date, descripcion, description, numero_comprobante, receipt, observaciones } = req.body;
 
-            const montoFinal = monto || amount;
+            const montoFinal = Number(monto ?? amount);
             const fechaFinal = fecha_retiro || date;
 
-            if (!id || !montoFinal || !fechaFinal) {
+            if (!id || !Number.isFinite(montoFinal) || montoFinal <= 0 || !fechaFinal) {
                 return res.status(400).json({ message: "Faltan datos requeridos (socio_id, monto, fecha)" });
+            }
+
+            const d = new Date(fechaFinal);
+            const queryPeriodo = Number.isNaN(d.getTime())
+                ? {}
+                : { month: d.getMonth(), year: d.getFullYear() };
+
+            const disponibleData = await getPartnerAvailableAmount(id, queryPeriodo);
+            if (!disponibleData) {
+                return res.status(404).json({ message: "Socio no encontrado" });
+            }
+
+            if (montoFinal > Number(disponibleData.disponible || 0)) {
+                return res.status(400).json({
+                    message: "Monto excede disponible del socio en el período",
+                    disponible: Number(disponibleData.disponible || 0),
+                    solicitado: montoFinal,
+                    periodo: disponibleData.period
+                });
             }
 
             const retiros = new RetirosSocios();
@@ -40,7 +78,11 @@ export default class RetirosSociosController {
                 numero_comprobante || receipt || null,
                 observaciones || null
             );
-            return res.json({ ok: true, resultado });
+            return res.json({
+                ok: true,
+                resultado,
+                disponible_actualizado: Math.max(0, Number(disponibleData.disponible || 0) - montoFinal)
+            });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al registrar retiro" });

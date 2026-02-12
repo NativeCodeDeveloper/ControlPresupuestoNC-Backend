@@ -46,6 +46,7 @@ export default class ProyectosController {
                 profesion_cliente,
                 monto_acordado,
                 fecha_creacion,
+                fecha_entrega,
                 observaciones
             } = req.body;
 
@@ -73,6 +74,7 @@ export default class ProyectosController {
                 profesion_cliente,
                 monto_acordado,
                 fecha_creacion || new Date().toISOString().split('T')[0],
+                fecha_entrega || null,
                 observaciones
             );
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
