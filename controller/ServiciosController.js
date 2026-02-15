@@ -1,4 +1,5 @@
 import Servicios from "../model/Servicios.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class ServiciosController {
     constructor() {}
@@ -7,7 +8,12 @@ export default class ServiciosController {
     static async obtenerServicios(req, res) {
         try {
             const servicio = new Servicios();
-            const dataServicios = await servicio.selectAllServicios();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataServicios = await servicio.selectAllServicios(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataServicios);
         } catch (error) {
             console.error(error);

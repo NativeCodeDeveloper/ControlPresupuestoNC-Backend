@@ -1,4 +1,5 @@
 import Socios from "../model/Socios.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class SociosController {
     constructor() {}
@@ -7,7 +8,12 @@ export default class SociosController {
     static async obtenerSocios(req, res) {
         try {
             const socio = new Socios();
-            const dataSocios = await socio.selectAllSocios();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataSocios = await socio.selectAllSocios(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataSocios);
         } catch (error) {
             console.error(error);
@@ -78,7 +84,10 @@ export default class SociosController {
 
             const socio = new Socios();
             const resultado = await socio.deleteSocio(id);
-            return res.json({ ok: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Socio no encontrado o ya eliminado" });
+            }
+            return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al eliminar socio" });

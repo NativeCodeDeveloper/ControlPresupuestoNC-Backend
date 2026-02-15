@@ -1,6 +1,8 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import helmet from "helmet";
+import morgan from "morgan";
 
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO
 import sociosRoutes from "./view/sociosRoutes.js";
@@ -39,13 +41,78 @@ import { ejecutarRecordatoriosAutomaticos } from "./services/notificacionPreviaD
 
 
 const app = express();
-app.use(express.json());
+app.use(helmet());
+app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
+app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());
+const ENABLE_REMINDERS_CRON = String(process.env.ENABLE_REMINDERS_CRON ?? "true").toLowerCase() === "true";
 
+const RECORDATORIOS_MANUAL_KEY = process.env.RECORDATORIOS_MANUAL_KEY || "";
+let recordatoriosEnEjecucion = false;
+let ultimaEjecucionRecordatorios = null;
+
+function estaAutorizadoRecordatorioManual(req) {
+    // En producción siempre exige llave. En desarrollo se permite si no está configurada.
+    if (process.env.NODE_ENV !== "production" && !RECORDATORIOS_MANUAL_KEY) {
+        return true;
+    }
+
+    if (!RECORDATORIOS_MANUAL_KEY) return false;
+
+    const providedKey = req.header("x-recordatorios-key") || req.query.key;
+    return providedKey === RECORDATORIOS_MANUAL_KEY;
+}
+
+async function ejecutarRecordatoriosSeguro(source = "cron") {
+    if (recordatoriosEnEjecucion) {
+        return {
+            ok: false,
+            skipped: true,
+            source,
+            reason: "recordatorios_already_running",
+            started_at: ultimaEjecucionRecordatorios
+        };
+    }
+
+    recordatoriosEnEjecucion = true;
+    ultimaEjecucionRecordatorios = new Date().toISOString();
+
+    try {
+        const resultado = await ejecutarRecordatoriosAutomaticos();
+        return {
+            ok: true,
+            source,
+            started_at: ultimaEjecucionRecordatorios,
+            ...resultado
+        };
+    } catch (error) {
+        return {
+            ok: false,
+            source,
+            started_at: ultimaEjecucionRecordatorios,
+            error: error?.message || "Error ejecutando recordatorios"
+        };
+    } finally {
+        recordatoriosEnEjecucion = false;
+    }
+}
+
+
+const allowedOrigins = String(process.env.CORS_ORIGINS || "")
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
 
 const corsConfig = {
-    origin: true,           // refleja el origin de la petición (permite cualquier origen)
-    credentials: true,      // permite envío de cookies; poner false si no quieres cookies
+    origin: (origin, callback) => {
+        // Si no hay lista configurada, se mantiene modo permisivo (compatibilidad actual).
+        if (allowedOrigins.length === 0) return callback(null, true);
+        // Permitir requests sin origin explícito (curl, scripts internos, health checks).
+        if (!origin) return callback(null, true);
+        if (allowedOrigins.includes(origin)) return callback(null, true);
+        return callback(new Error("Origin no permitido por CORS"));
+    },
+    credentials: true,
     methods: ['GET','POST','PUT','PATCH','DELETE','OPTIONS'],
     allowedHeaders: ['Content-Type','Authorization']
 };
@@ -97,11 +164,24 @@ app.use('/notificacion', notificacionAgendamientoRoutes);
 
 // Ruta para ejecutar recordatorios manualmente (útil para testing)
 app.get('/recordatorios/ejecutar', async (req, res) => {
+    if (!estaAutorizadoRecordatorioManual(req)) {
+        return res.status(403).json({
+            ok: false,
+            message: "No autorizado para ejecutar recordatorios manuales"
+        });
+    }
+
     try {
-        const resultado = await ejecutarRecordatoriosAutomaticos();
-        res.json({ ok: true, ...resultado });
+        const resultado = await ejecutarRecordatoriosSeguro("manual");
+        if (resultado.skipped) {
+            return res.status(409).json(resultado);
+        }
+        if (!resultado.ok) {
+            return res.status(500).json(resultado);
+        }
+        return res.json(resultado);
     } catch (error) {
-        res.status(500).json({ ok: false, error: error.message });
+        return res.status(500).json({ ok: false, error: error.message });
     }
 });
 
@@ -110,15 +190,38 @@ const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
     console.log(`BACKEND CORRIENDO SIN PROBLEMAS EN --->  http://localhost:${PORT}`);
 
+    if (!ENABLE_REMINDERS_CRON) {
+        console.warn("[CRON] Recordatorios automáticos deshabilitados por ENABLE_REMINDERS_CRON=false");
+        return;
+    }
+
     // CRON JOB: Ejecutar recordatorios automáticos cada 5 minutos
     console.log("[CRON] Iniciando cron job de recordatorios (cada 5 minutos)...");
-    setInterval(async () => {
-        await ejecutarRecordatoriosAutomaticos();
+    const cronHandle = setInterval(() => {
+        ejecutarRecordatoriosSeguro("cron").then((resultado) => {
+            if (resultado.skipped) {
+                console.warn("[CRON] Se omitió ejecución por proceso en curso.");
+            } else if (!resultado.ok) {
+                console.error("[CRON] Error en ejecución automática:", resultado.error);
+            }
+        }).catch((error) => {
+            console.error("[CRON] Error inesperado en scheduler:", error?.message || error);
+        });
     }, 5 * 60 * 1000); // 5 minutos en milisegundos
 
+    if (typeof cronHandle.unref === "function") {
+        cronHandle.unref();
+    }
+
     // Ejecutar una vez al iniciar el servidor
-    setTimeout(async () => {
+    setTimeout(() => {
         console.log("[CRON] Ejecutando primera revisión de recordatorios...");
-        await ejecutarRecordatoriosAutomaticos();
+        ejecutarRecordatoriosSeguro("startup").then((resultado) => {
+            if (!resultado.ok && !resultado.skipped) {
+                console.error("[CRON] Error en primera ejecución:", resultado.error);
+            }
+        }).catch((error) => {
+            console.error("[CRON] Error inesperado en primera ejecución:", error?.message || error);
+        });
     }, 10000); // Esperar 10 segundos después de iniciar
-})
+});

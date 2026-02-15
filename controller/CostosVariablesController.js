@@ -1,4 +1,5 @@
 import CostosVariables from "../model/CostosVariables.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class CostosVariablesController {
     constructor() {}
@@ -7,7 +8,12 @@ export default class CostosVariablesController {
     static async obtenerCostosVariables(req, res) {
         try {
             const costo = new CostosVariables();
-            const dataCostos = await costo.selectAllCostosVariables();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataCostos = await costo.selectAllCostosVariables(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataCostos);
         } catch (error) {
             console.error(error);
@@ -24,6 +30,9 @@ export default class CostosVariablesController {
             }
             const costo = new CostosVariables();
             const dataCosto = await costo.selectCostoVariableById(id);
+            if (!dataCosto) {
+                return res.status(404).json({ message: "Costo variable no encontrado" });
+            }
             return res.json(dataCosto);
         } catch (error) {
             console.error(error);
@@ -39,7 +48,12 @@ export default class CostosVariablesController {
                 return res.status(404).json({ message: "Tipo requerido" });
             }
             const costo = new CostosVariables();
-            const dataCostos = await costo.selectCostosPorTipo(tipo_costo_id);
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataCostos = await costo.selectCostosPorTipo(tipo_costo_id, pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataCostos);
         } catch (error) {
             console.error(error);
@@ -55,7 +69,12 @@ export default class CostosVariablesController {
                 return res.status(404).json({ message: "Proyecto requerido" });
             }
             const costo = new CostosVariables();
-            const dataCostos = await costo.selectCostosPorProyecto(proyecto_id);
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataCostos = await costo.selectCostosPorProyecto(proyecto_id, pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataCostos);
         } catch (error) {
             console.error(error);
@@ -129,6 +148,9 @@ export default class CostosVariablesController {
                 comprobante_url,
                 observaciones
             );
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo variable no encontrado o eliminado" });
+            }
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -146,7 +168,10 @@ export default class CostosVariablesController {
 
             const costo = new CostosVariables();
             const resultado = await costo.deleteCostoVariable(id);
-            return res.json({ ok: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo variable no encontrado o ya eliminado" });
+            }
+            return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al eliminar costo variable" });

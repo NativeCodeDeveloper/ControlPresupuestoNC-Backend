@@ -1,4 +1,5 @@
 import CostosFijos from "../model/CostosFijos.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class CostosFixosController {
     constructor() {}
@@ -7,7 +8,12 @@ export default class CostosFixosController {
     static async obtenerCostosFijos(req, res) {
         try {
             const costo = new CostosFijos();
-            const dataCostos = await costo.selectAllCostosFijos();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataCostos = await costo.selectAllCostosFijos(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataCostos);
         } catch (error) {
             console.error(error);
@@ -19,7 +25,12 @@ export default class CostosFixosController {
     static async obtenerCostosFixosActivos(req, res) {
         try {
             const costo = new CostosFijos();
-            const dataCostos = await costo.selectCostosFixoActivos();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataCostos = await costo.selectCostosFixoActivos(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataCostos);
         } catch (error) {
             console.error(error);
@@ -36,6 +47,9 @@ export default class CostosFixosController {
             }
             const costo = new CostosFijos();
             const dataCosto = await costo.selectCostoFijoById(id);
+            if (!dataCosto) {
+                return res.status(404).json({ message: "Costo fijo no encontrado" });
+            }
             return res.json(dataCosto);
         } catch (error) {
             console.error(error);
@@ -91,6 +105,9 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.updateCostoFijo(id, servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, fecha_fin, notas);
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
+            }
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -110,6 +127,9 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.desactivarCostoFijo(id, fecha_fin);
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
+            }
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -127,7 +147,10 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.deleteCostoFijo(id);
-            return res.json({ ok: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo fijo no encontrado o ya eliminado" });
+            }
+            return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al eliminar costo fijo" });

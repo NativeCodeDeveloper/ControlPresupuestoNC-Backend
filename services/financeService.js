@@ -1,5 +1,9 @@
 import DataBase from "../config/Database.js";
 
+const SOFT_DELETE_SOCIO_PREFIX = "[ELIMINADO]#";
+const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
+const tableColumnsCache = new Map();
+
 function normalizeMonth(rawMonth) {
     if (rawMonth === undefined || rawMonth === null || rawMonth === "") return null;
     const value = Number(rawMonth);
@@ -99,12 +103,20 @@ function fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex) {
     if (end && end < periodStart) return false;
     if (start && start > periodEnd) return false;
 
-    // Si el costo inicia dentro del período seleccionado, se considera gasto del período.
-    if (start && start >= periodStart && start <= periodEnd) return true;
-
     const dueDate = computeNextFixedDueDate(cost, periodStart);
     if (!dueDate) return false;
     return dueDate >= periodStart && dueDate <= periodEnd;
+}
+
+function fixedCostIsActiveInPeriod(cost, periodYear, periodMonthIndex) {
+    const periodStart = new Date(periodYear, periodMonthIndex, 1);
+    const periodEnd = new Date(periodYear, periodMonthIndex + 1, 0);
+    const start = normalizeDate(cost?.fecha_inicio);
+    const end = normalizeDate(cost?.fecha_fin);
+
+    if (start && start > periodEnd) return false;
+    if (end && end < periodStart) return false;
+    return true;
 }
 
 function computeNextFixedDueDate(cost, referenceDate = new Date()) {
@@ -112,17 +124,32 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
     const start = normalizeDate(cost?.fecha_inicio) || ref;
     const end = normalizeDate(cost?.fecha_fin);
     const paymentDay = Number(cost?.fecha_pago || start.getDate());
-    const stepMonths = getFrequencyStepMonths(cost?.frecuencia);
+    const stepMonths = Math.max(1, Number(getFrequencyStepMonths(cost?.frecuencia) || 1));
 
-    let due = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
-    if (due < start) {
+    // Regla de negocio:
+    // - Mensual: puede vencer dentro del mismo mes de inicio.
+    // - Trimestral/Anual: el primer vencimiento ocurre en el siguiente ciclo.
+    let due;
+    if (stepMonths > 1) {
         const moved = addMonths(start.getFullYear(), start.getMonth(), stepMonths);
         due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+    } else {
+        due = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
+        if (due < start) {
+            const moved = addMonths(start.getFullYear(), start.getMonth(), stepMonths);
+            due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+        }
     }
 
-    while (due < ref) {
+    let guard = 0;
+    while (due < ref && guard < 600) {
         const moved = addMonths(due.getFullYear(), due.getMonth(), stepMonths);
         due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+        guard += 1;
+    }
+
+    if (guard >= 600) {
+        return null;
     }
 
     if (end && due > end) return null;
@@ -138,6 +165,8 @@ async function safeQuery(conexion, query, params = [], fallback = []) {
 }
 
 async function getTableColumns(conexion, tableName) {
+    if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName);
+
     const rows = await safeQuery(
         conexion,
         `SELECT COLUMN_NAME
@@ -148,15 +177,233 @@ async function getTableColumns(conexion, tableName) {
         []
     );
 
-    return new Set(
+    const cols = new Set(
         (Array.isArray(rows) ? rows : [])
             .map((r) => String(r.COLUMN_NAME || "").trim())
             .filter(Boolean)
     );
+
+    tableColumnsCache.set(tableName, cols);
+    return cols;
+}
+
+async function getConfigIdColumn(conexion) {
+    const cols = await getTableColumns(conexion, "configuracion_financiera");
+    return cols.has("id_configuracion_financiera") ? "id_configuracion_financiera" : "id";
+}
+
+async function getSocioIdColumn(conexion) {
+    const cols = await getTableColumns(conexion, "socios");
+    return cols.has("id_socio") ? "id_socio" : "id";
+}
+
+async function getRetiroSocioColumn(conexion) {
+    const cols = await getTableColumns(conexion, "retiros_socios");
+    return cols.has("id_socio") ? "id_socio" : "socio_id";
+}
+
+async function getCostoFijoIdColumn(conexion) {
+    const cols = await getTableColumns(conexion, "costos_fijos");
+    return cols.has("id_costo_fijo") ? "id_costo_fijo" : "id";
+}
+
+async function getCostoFijoServicioColumn(conexion) {
+    const cols = await getTableColumns(conexion, "costos_fijos");
+    return cols.has("id_servicio") ? "id_servicio" : "servicio_id";
+}
+
+async function getServicioIdColumn(conexion) {
+    const cols = await getTableColumns(conexion, "servicios");
+    return cols.has("id_servicio") ? "id_servicio" : "id";
+}
+
+async function getCostoVariableIdColumn(conexion) {
+    const cols = await getTableColumns(conexion, "costos_variables");
+    return cols.has("id_costo_variable") ? "id_costo_variable" : "id";
+}
+
+async function getCostosFijosNotDeletedFilter(conexion, alias = "") {
+    const cols = await getTableColumns(conexion, "costos_fijos");
+    const prefix = alias ? `${alias}.` : "";
+
+    if (cols.has("activo")) {
+        return { whereClause: `${prefix}activo = 1`, params: [] };
+    }
+
+    if (cols.has("notas")) {
+        return {
+            whereClause: `(${prefix}notas IS NULL OR ${prefix}notas NOT LIKE ?)`,
+            params: [`${SOFT_DELETE_PREFIX}%`]
+        };
+    }
+
+    return { whereClause: "", params: [] };
+}
+
+async function getCostosVariablesNotDeletedFilter(conexion, alias = "") {
+    const cols = await getTableColumns(conexion, "costos_variables");
+    const prefix = alias ? `${alias}.` : "";
+
+    if (cols.has("activo")) {
+        return { whereClause: `${prefix}activo = 1`, params: [] };
+    }
+
+    if (cols.has("observaciones")) {
+        return {
+            whereClause: `(${prefix}observaciones IS NULL OR ${prefix}observaciones NOT LIKE ?)`,
+            params: [`${SOFT_DELETE_PREFIX}%`]
+        };
+    }
+
+    return { whereClause: "", params: [] };
+}
+
+async function getInversionesNotDeletedFilter(conexion, alias = "") {
+    const cols = await getTableColumns(conexion, "inversiones");
+    const prefix = alias ? `${alias}.` : "";
+
+    if (cols.has("activo")) {
+        return { whereClause: `${prefix}activo = 1`, params: [] };
+    }
+
+    if (cols.has("observaciones")) {
+        return {
+            whereClause: `(${prefix}observaciones IS NULL OR ${prefix}observaciones NOT LIKE ?)`,
+            params: [`${SOFT_DELETE_PREFIX}%`]
+        };
+    }
+
+    return { whereClause: "", params: [] };
+}
+
+async function getRetirosNotDeletedFilter(conexion, alias = "") {
+    const cols = await getTableColumns(conexion, "retiros_socios");
+    const prefix = alias ? `${alias}.` : "";
+
+    if (cols.has("activo")) {
+        return { whereClause: `${prefix}activo = 1`, params: [] };
+    }
+
+    if (cols.has("observaciones")) {
+        return {
+            whereClause: `(${prefix}observaciones IS NULL OR ${prefix}observaciones NOT LIKE ?)`,
+            params: [`${SOFT_DELETE_PREFIX}%`]
+        };
+    }
+
+    return { whereClause: "", params: [] };
+}
+
+async function getActivePartners(conexion) {
+    const sociosColumns = await getTableColumns(conexion, "socios");
+    const hasActivoSocios = sociosColumns.has("activo");
+    const socioIdColumn = await getSocioIdColumn(conexion);
+
+    const query = hasActivoSocios
+        ? `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
+           FROM socios
+           WHERE activo = 1
+           ORDER BY nombre`
+        : `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
+           FROM socios
+           WHERE nombre NOT LIKE ?
+           ORDER BY nombre`;
+    const params = hasActivoSocios ? [] : [`${SOFT_DELETE_SOCIO_PREFIX}%`];
+
+    const rows = await safeQuery(conexion, query, params, []);
+    return Array.isArray(rows) ? rows : [];
+}
+
+async function getPartnersWithdrawalsMap(conexion, startDate, endDate) {
+    const retiroSocioColumn = await getRetiroSocioColumn(conexion);
+    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    const where = ["fecha_retiro BETWEEN ? AND ?"];
+    const params = [startDate, endDate];
+
+    if (retirosFilter.whereClause) {
+        where.push(retirosFilter.whereClause);
+        params.push(...retirosFilter.params);
+    }
+
+    const rows = await safeQuery(
+        conexion,
+        `SELECT ${retiroSocioColumn} AS id_socio, COALESCE(SUM(monto), 0) AS retirado
+         FROM retiros_socios
+         WHERE ${where.join(" AND ")}
+         GROUP BY ${retiroSocioColumn}`,
+        params,
+        []
+    );
+
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const socioId = Number(row?.id_socio);
+        if (!Number.isFinite(socioId)) return;
+        map.set(socioId, Number(row?.retirado || 0));
+    });
+    return map;
+}
+
+async function getFinancialConfigRow(conexion) {
+    const configIdColumn = await getConfigIdColumn(conexion);
+
+    const [preferred] = await safeQuery(
+        conexion,
+        `SELECT porcentaje_fondo_emergencia, porcentaje_reinversion
+         FROM configuracion_financiera
+         WHERE ${configIdColumn} = 1
+         LIMIT 1`,
+        [],
+        []
+    );
+    if (preferred) {
+        return preferred;
+    }
+
+    const [fallback] = await safeQuery(
+        conexion,
+        `SELECT porcentaje_fondo_emergencia, porcentaje_reinversion
+         FROM configuracion_financiera
+         ORDER BY ${configIdColumn} ASC
+         LIMIT 1`,
+        [],
+        []
+    );
+    if (fallback) {
+        return fallback;
+    }
+
+    return {
+        porcentaje_fondo_emergencia: 10,
+        porcentaje_reinversion: 3
+    };
+}
+
+async function getVariableCostsTotalInRange(conexion, startDate, endDate) {
+    const filter = await getCostosVariablesNotDeletedFilter(conexion);
+    const where = ["fecha BETWEEN ? AND ?"];
+    const params = [startDate, endDate];
+
+    if (filter.whereClause) {
+        where.push(filter.whereClause);
+        params.push(...filter.params);
+    }
+
+    const [row] = await safeQuery(
+        conexion,
+        `SELECT COALESCE(SUM(monto), 0) AS total
+         FROM costos_variables
+         WHERE ${where.join(" AND ")}`,
+        params,
+        [{}]
+    );
+
+    return Number(row?.total || 0);
 }
 
 async function getFixedCostsData(conexion) {
     const columns = await getTableColumns(conexion, "costos_fijos");
+    const idColumn = await getCostoFijoIdColumn(conexion);
 
     const hasFechaInicio = columns.has("fecha_inicio");
     const hasFechaFin = columns.has("fecha_fin");
@@ -167,20 +414,31 @@ async function getFixedCostsData(conexion) {
     const selectFechaPago = hasFechaPago ? "fecha_pago" : "1 AS fecha_pago";
     const selectFechaInicio = hasFechaInicio ? "fecha_inicio" : "NULL AS fecha_inicio";
     const selectFechaFin = hasFechaFin ? "fecha_fin" : "NULL AS fecha_fin";
+    const filter = await getCostosFijosNotDeletedFilter(conexion);
+    const whereClause = filter.whereClause ? `WHERE ${filter.whereClause}` : "";
 
     return safeQuery(
         conexion,
-        `SELECT id, monto, ${selectFrecuencia}, ${selectFechaPago}, ${selectFechaInicio}, ${selectFechaFin}
-         FROM costos_fijos`,
-        [],
+        `SELECT ${idColumn} AS id, monto, ${selectFrecuencia}, ${selectFechaPago}, ${selectFechaInicio}, ${selectFechaFin}
+         FROM costos_fijos
+         ${whereClause}`,
+        filter.params,
         []
     );
 }
 
 async function getInvestmentSums(conexion, startDate, endDate) {
     const hasRange = Boolean(startDate && endDate);
-    const rangeClause = hasRange ? "WHERE fecha_inversion BETWEEN ? AND ?" : "";
+    const rangeWhere = hasRange ? ["fecha_inversion BETWEEN ? AND ?"] : [];
     const params = hasRange ? [startDate, endDate] : [];
+    const filter = await getInversionesNotDeletedFilter(conexion);
+
+    if (filter.whereClause) {
+        rangeWhere.push(filter.whereClause);
+        params.push(...filter.params);
+    }
+
+    const whereClause = rangeWhere.length > 0 ? `WHERE ${rangeWhere.join(" AND ")}` : "";
 
     try {
         const [row] = await conexion.ejecutarQuery(
@@ -189,7 +447,7 @@ async function getInvestmentSums(conexion, startDate, endDate) {
                 COALESCE(SUM(CASE WHEN fondo_origen = 'emergencia' THEN monto ELSE 0 END), 0) AS emergencia,
                 COALESCE(SUM(monto), 0) AS total
              FROM inversiones
-             ${rangeClause}`,
+             ${whereClause}`,
             params
         );
 
@@ -201,7 +459,7 @@ async function getInvestmentSums(conexion, startDate, endDate) {
     } catch (_) {
         try {
             const [row] = await conexion.ejecutarQuery(
-                `SELECT COALESCE(SUM(monto), 0) AS total FROM inversiones ${rangeClause}`,
+                `SELECT COALESCE(SUM(monto), 0) AS total FROM inversiones ${whereClause}`,
                 params
             );
             const total = Number(row?.total || 0);
@@ -272,12 +530,7 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
 
     const fixedCostsData = await getFixedCostsData(conexion);
 
-    const [costosVariables] = await safeQuery(
-        conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM costos_variables WHERE fecha BETWEEN ? AND ?",
-        [startDate, endDate],
-        [{}]
-    );
+    const variable = await getVariableCostsTotalInRange(conexion, startDate, endDate);
 
     const totalFixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
         .filter((cost) => fixedCostOccursInPeriod(cost, year, month - 1))
@@ -287,15 +540,9 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
         }, 0);
 
     const income = Number(ingresos?.total || 0);
-    const variable = Number(costosVariables?.total || 0);
     const base = Math.max(0, income - totalFixedCosts - variable);
 
-    const [config] = await safeQuery(
-        conexion,
-        "SELECT porcentaje_fondo_emergencia, porcentaje_reinversion FROM configuracion_financiera WHERE id = 1",
-        [],
-        [{}]
-    );
+    const config = await getFinancialConfigRow(conexion);
 
     const pctEmerg = Number(config?.porcentaje_fondo_emergencia || 0);
     const pctReinv = Number(config?.porcentaje_reinversion || 0);
@@ -343,9 +590,21 @@ async function getFondosSaldos(conexion) {
     };
 }
 
-export async function getFinancialSummary(query = {}) {
-    const conexion = DataBase.getInstance();
-    const period = getPeriodFromQuery(query);
+function buildPeriod(year, month) {
+    const safeYear = Number(year);
+    const safeMonth = Number(month);
+    return {
+        year: safeYear,
+        month: safeMonth,
+        startDate: `${safeYear}-${String(safeMonth).padStart(2, "0")}-01`,
+        endDate: new Date(safeYear, safeMonth, 0).toISOString().slice(0, 10)
+    };
+}
+
+async function getPeriodFinancialCore(conexion, period, context = {}) {
+    const config = context.config || await getFinancialConfigRow(conexion);
+    const fixedCostsData = context.fixedCostsData || await getFixedCostsData(conexion);
+    const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
 
     const [ingresos] = await safeQuery(
         conexion,
@@ -354,39 +613,37 @@ export async function getFinancialSummary(query = {}) {
         [{}]
     );
 
-    const costosFijosData = await getFixedCostsData(conexion);
+    const totalVariableCosts = await getVariableCostsTotalInRange(conexion, period.startDate, period.endDate);
 
-    const [costosVariables] = await safeQuery(
-        conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM costos_variables WHERE fecha BETWEEN ? AND ?",
-        [period.startDate, period.endDate],
-        [{}]
-    );
+    const retirosWhere = ["fecha_retiro BETWEEN ? AND ?"];
+    const retirosParams = [period.startDate, period.endDate];
+    if (retirosFilter.whereClause) {
+        retirosWhere.push(retirosFilter.whereClause);
+        retirosParams.push(...retirosFilter.params);
+    }
 
     const [retirosMes] = await safeQuery(
         conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM retiros_socios WHERE fecha_retiro BETWEEN ? AND ?",
-        [period.startDate, period.endDate],
+        `SELECT COALESCE(SUM(monto), 0) AS total
+         FROM retiros_socios
+         WHERE ${retirosWhere.join(" AND ")}`,
+        retirosParams,
         [{}]
     );
-
-    const [config] = await safeQuery(
-        conexion,
-        "SELECT porcentaje_fondo_emergencia, porcentaje_reinversion FROM configuracion_financiera WHERE id = 1",
-        [],
-        [{}]
-    );
-
-    const inversionesPeriodo = await getInvestmentSums(conexion, period.startDate, period.endDate);
 
     const totalIncome = Number(ingresos?.total || 0);
-    const totalFixedCosts = (Array.isArray(costosFijosData) ? costosFijosData : [])
+    const totalFixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
         .filter((cost) => fixedCostOccursInPeriod(cost, period.year, period.month - 1))
         .reduce((sum, cost) => {
             const amount = Number.parseFloat(cost?.monto);
             return sum + (Number.isFinite(amount) ? amount : 0);
         }, 0);
-    const totalVariableCosts = Number(costosVariables?.total || 0);
+    const totalFixedCostsCommitted = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+        .filter((cost) => fixedCostIsActiveInPeriod(cost, period.year, period.month - 1))
+        .reduce((sum, cost) => {
+            const amount = Number.parseFloat(cost?.monto);
+            return sum + (Number.isFinite(amount) ? amount : 0);
+        }, 0);
     const totalExpenses = totalFixedCosts + totalVariableCosts;
 
     const operatingResult = totalIncome - totalExpenses;
@@ -398,25 +655,282 @@ export async function getFinancialSummary(query = {}) {
     const emergencyFundDeduction = (baseForDeductions * emergencyPct) / 100;
     const reinvestmentDeduction = (baseForDeductions * reinvestPct) / 100;
 
-    // Las inversiones consumen fondos ya deducidos (no se descuentan 2 veces del neto socios).
     const netProfit = operatingResult - emergencyFundDeduction - reinvestmentDeduction;
+    const withdrawals = Number(retirosMes?.total || 0);
+    const partnersAvailable = Math.max(0, netProfit - withdrawals);
+
+    return {
+        totalIncome,
+        totalFixedCosts,
+        totalFixedCostsCommitted,
+        totalVariableCosts,
+        totalExpenses,
+        operatingResult,
+        emergencyPct,
+        reinvestPct,
+        emergencyFundDeduction,
+        reinvestmentDeduction,
+        netProfit,
+        withdrawals,
+        partnersAvailable
+    };
+}
+
+async function getFirstRelevantPeriod(conexion, targetPeriod, context = {}) {
+    const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
+    const variableFilter = context.variableFilter || await getCostosVariablesNotDeletedFilter(conexion);
+    const fixedFilter = context.fixedFilter || await getCostosFijosNotDeletedFilter(conexion);
+
+    const [pagos] = await safeQuery(
+        conexion,
+        "SELECT MIN(fecha_pago) AS min_date FROM proyecto_pagos WHERE fecha_pago <= ?",
+        [targetPeriod.endDate],
+        [{}]
+    );
+
+    const variableWhere = ["fecha <= ?"];
+    const variableParams = [targetPeriod.endDate];
+    if (variableFilter.whereClause) {
+        variableWhere.push(variableFilter.whereClause);
+        variableParams.push(...variableFilter.params);
+    }
+    const [variables] = await safeQuery(
+        conexion,
+        `SELECT MIN(fecha) AS min_date
+         FROM costos_variables
+         WHERE ${variableWhere.join(" AND ")}`,
+        variableParams,
+        [{}]
+    );
+
+    const fixedWhere = ["fecha_inicio <= ?"];
+    const fixedParams = [targetPeriod.endDate];
+    if (fixedFilter.whereClause) {
+        fixedWhere.push(fixedFilter.whereClause);
+        fixedParams.push(...fixedFilter.params);
+    }
+    const [fijos] = await safeQuery(
+        conexion,
+        `SELECT MIN(fecha_inicio) AS min_date
+         FROM costos_fijos
+         WHERE ${fixedWhere.join(" AND ")}`,
+        fixedParams,
+        [{}]
+    );
+
+    const retirosWhere = ["fecha_retiro <= ?"];
+    const retirosParams = [targetPeriod.endDate];
+    if (retirosFilter.whereClause) {
+        retirosWhere.push(retirosFilter.whereClause);
+        retirosParams.push(...retirosFilter.params);
+    }
+    const [retiros] = await safeQuery(
+        conexion,
+        `SELECT MIN(fecha_retiro) AS min_date
+         FROM retiros_socios
+         WHERE ${retirosWhere.join(" AND ")}`,
+        retirosParams,
+        [{}]
+    );
+
+    const dates = [pagos?.min_date, variables?.min_date, fijos?.min_date, retiros?.min_date]
+        .map((value) => normalizeDate(value))
+        .filter(Boolean);
+
+    if (dates.length === 0) {
+        return { year: targetPeriod.year, month: targetPeriod.month };
+    }
+
+    dates.sort((a, b) => a.getTime() - b.getTime());
+    const first = dates[0];
+    return {
+        year: first.getFullYear(),
+        month: first.getMonth() + 1
+    };
+}
+
+function mapMonthlyRows(rows = []) {
+    const map = new Map();
+    (Array.isArray(rows) ? rows : []).forEach((row) => {
+        const year = Number(row?.year || row?.año || row?.anio);
+        const month = Number(row?.month || row?.mes);
+        const total = Number(row?.total || 0);
+        if (!Number.isFinite(year) || !Number.isFinite(month)) return;
+        map.set(`${year}-${month}`, total);
+    });
+    return map;
+}
+
+async function getMonthlyAggregates(conexion, startDate, endDate, context = {}) {
+    const variableFilter = context.variableFilter || await getCostosVariablesNotDeletedFilter(conexion);
+    const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
+
+    const incomeRows = await safeQuery(
+        conexion,
+        `SELECT YEAR(fecha_pago) AS year, MONTH(fecha_pago) AS month, COALESCE(SUM(monto), 0) AS total
+         FROM proyecto_pagos
+         WHERE fecha_pago BETWEEN ? AND ?
+         GROUP BY YEAR(fecha_pago), MONTH(fecha_pago)`,
+        [startDate, endDate],
+        []
+    );
+
+    const variableWhere = ["fecha BETWEEN ? AND ?"];
+    const variableParams = [startDate, endDate];
+    if (variableFilter.whereClause) {
+        variableWhere.push(variableFilter.whereClause);
+        variableParams.push(...variableFilter.params);
+    }
+    const variableRows = await safeQuery(
+        conexion,
+        `SELECT YEAR(fecha) AS year, MONTH(fecha) AS month, COALESCE(SUM(monto), 0) AS total
+         FROM costos_variables
+         WHERE ${variableWhere.join(" AND ")}
+         GROUP BY YEAR(fecha), MONTH(fecha)`,
+        variableParams,
+        []
+    );
+
+    const retirosWhere = ["fecha_retiro BETWEEN ? AND ?"];
+    const retirosParams = [startDate, endDate];
+    if (retirosFilter.whereClause) {
+        retirosWhere.push(retirosFilter.whereClause);
+        retirosParams.push(...retirosFilter.params);
+    }
+    const withdrawalRows = await safeQuery(
+        conexion,
+        `SELECT YEAR(fecha_retiro) AS year, MONTH(fecha_retiro) AS month, COALESCE(SUM(monto), 0) AS total
+         FROM retiros_socios
+         WHERE ${retirosWhere.join(" AND ")}
+         GROUP BY YEAR(fecha_retiro), MONTH(fecha_retiro)`,
+        retirosParams,
+        []
+    );
+
+    return {
+        income: mapMonthlyRows(incomeRows),
+        variable: mapMonthlyRows(variableRows),
+        withdrawals: mapMonthlyRows(withdrawalRows)
+    };
+}
+
+async function getPartnersAvailableAccumulated(conexion, targetPeriod, context = {}) {
+    const firstPeriod = await getFirstRelevantPeriod(conexion, targetPeriod, context);
+    const config = context.config || await getFinancialConfigRow(conexion);
+    const fixedCostsData = context.fixedCostsData || await getFixedCostsData(conexion);
+    const firstStartDate = `${firstPeriod.year}-${String(firstPeriod.month).padStart(2, "0")}-01`;
+    const monthly = await getMonthlyAggregates(conexion, firstStartDate, targetPeriod.endDate, context);
+
+    let year = firstPeriod.year;
+    let month = firstPeriod.month;
+    let accumulated = 0;
+    let guard = 0;
+
+    while (
+        (year < targetPeriod.year || (year === targetPeriod.year && month <= targetPeriod.month))
+        && guard < 600
+    ) {
+        const monthKey = `${year}-${month}`;
+        const income = Number(monthly.income.get(monthKey) || 0);
+        const variableCosts = Number(monthly.variable.get(monthKey) || 0);
+        const withdrawals = Number(monthly.withdrawals.get(monthKey) || 0);
+        const fixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostOccursInPeriod(cost, year, month - 1))
+            .reduce((sum, cost) => {
+                const amount = Number.parseFloat(cost?.monto);
+                return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+
+        const operatingResult = income - fixedCosts - variableCosts;
+        const baseForDeductions = Math.max(0, operatingResult);
+        const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
+        const reinvestPct = Number(config?.porcentaje_reinversion || 0);
+        const emergencyDeduction = (baseForDeductions * emergencyPct) / 100;
+        const reinvestDeduction = (baseForDeductions * reinvestPct) / 100;
+        const netProfit = operatingResult - emergencyDeduction - reinvestDeduction;
+
+        const delta = Number(netProfit || 0) - withdrawals;
+        accumulated = Math.max(0, accumulated + delta);
+
+        month += 1;
+        if (month > 12) {
+            month = 1;
+            year += 1;
+        }
+        guard += 1;
+    }
+
+    return Math.max(0, accumulated);
+}
+
+export async function getFinancialSummary(query = {}) {
+    const conexion = DataBase.getInstance();
+    const period = getPeriodFromQuery(query);
+    const config = await getFinancialConfigRow(conexion);
+    const fixedCostsData = await getFixedCostsData(conexion);
+    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    const variableFilter = await getCostosVariablesNotDeletedFilter(conexion);
+    const fixedFilter = await getCostosFijosNotDeletedFilter(conexion);
+    const summaryContext = {
+        config,
+        fixedCostsData,
+        retirosFilter,
+        variableFilter,
+        fixedFilter
+    };
+    const core = await getPeriodFinancialCore(conexion, period, summaryContext);
+
+    const inversionesPeriodo = await getInvestmentSums(conexion, period.startDate, period.endDate);
+    const accumulatedPartnersAvailable = await getPartnersAvailableAccumulated(conexion, period, summaryContext);
+
+    const partners = await getActivePartners(conexion);
+    const partnersWithdrawalsMap = await getPartnersWithdrawalsMap(conexion, period.startDate, period.endDate);
+    const partnersAvailability = partners.map((partner) => {
+        const partnerId = Number(partner?.id);
+        const percentage = Number(partner?.porcentaje_participacion || 0);
+        const assigned = Math.max(0, (core.netProfit * percentage) / 100);
+        const withdrawn = Number(partnersWithdrawalsMap.get(partnerId) || 0);
+        const available = Math.max(0, assigned - withdrawn);
+
+        return {
+            id: partnerId,
+            name: partner?.nombre || `Socio ${partnerId}`,
+            percentage,
+            assigned,
+            withdrawn,
+            available
+        };
+    });
+
+    // Fuente canónica de disponible para socios en el período:
+    // neto del período menos retiros del período.
+    // Esto evita divergencias entre vistas cuando los porcentajes no suman 100%
+    // o cuando existen retiros históricos de socios inactivos.
+    const totalPartnersAvailable = core.partnersAvailable;
+
     const fondos = await getFondosSaldos(conexion);
 
     return {
         period,
         config: {
-            porcentaje_fondo_emergencia: emergencyPct,
-            porcentaje_reinversion: reinvestPct
+            porcentaje_fondo_emergencia: core.emergencyPct,
+            porcentaje_reinversion: core.reinvestPct
         },
-        income: totalIncome,
-        fixedCosts: totalFixedCosts,
-        variableCosts: totalVariableCosts,
-        expenses: totalExpenses,
-        operatingResult,
-        emergencyFundDeduction,
-        reinvestmentDeduction,
-        netProfit,
-        withdrawals: Number(retirosMes?.total || 0),
+        income: core.totalIncome,
+        fixedCosts: core.totalFixedCosts,
+        fixedCostsCommitted: core.totalFixedCostsCommitted,
+        variableCosts: core.totalVariableCosts,
+        expenses: core.totalExpenses,
+        operatingResult: core.operatingResult,
+        emergencyFundDeduction: core.emergencyFundDeduction,
+        reinvestmentDeduction: core.reinvestmentDeduction,
+        netProfit: core.netProfit,
+        withdrawals: core.withdrawals,
+        partnersAvailable: core.partnersAvailable,
+        totalPartnersAvailable,
+        partnersAvailableAccumulated: accumulatedPartnersAvailable,
+        totalPartnersAvailableAccumulated: accumulatedPartnersAvailable,
+        partnersAvailability,
         investments: inversionesPeriodo,
         fondos
     };
@@ -426,10 +940,25 @@ export async function getPartnerAvailableAmount(socioId, query = {}) {
     const conexion = DataBase.getInstance();
     const summary = await getFinancialSummary(query);
 
+    const sociosColumns = await getTableColumns(conexion, "socios");
+    const hasActivoSocios = sociosColumns.has("activo");
+    const socioIdColumn = await getSocioIdColumn(conexion);
+    const retiroSocioColumn = await getRetiroSocioColumn(conexion);
+    const socioQuery = hasActivoSocios
+        ? `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
+           FROM socios
+           WHERE ${socioIdColumn} = ? AND activo = 1`
+        : `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
+           FROM socios
+           WHERE ${socioIdColumn} = ? AND nombre NOT LIKE ?`;
+    const socioParams = hasActivoSocios
+        ? [socioId]
+        : [socioId, `${SOFT_DELETE_SOCIO_PREFIX}%`];
+
     const [socio] = await safeQuery(
         conexion,
-        "SELECT id, nombre, porcentaje_participacion FROM socios WHERE id = ?",
-        [socioId],
+        socioQuery,
+        socioParams,
         []
     );
 
@@ -438,10 +967,20 @@ export async function getPartnerAvailableAmount(socioId, query = {}) {
     }
 
     const assigned = Math.max(0, (summary.netProfit * Number(socio.porcentaje_participacion || 0)) / 100);
+    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    const retirosWhere = [`${retiroSocioColumn} = ?`, "fecha_retiro BETWEEN ? AND ?"];
+    const retirosParams = [socioId, summary.period.startDate, summary.period.endDate];
+    if (retirosFilter.whereClause) {
+        retirosWhere.push(retirosFilter.whereClause);
+        retirosParams.push(...retirosFilter.params);
+    }
+
     const [retiros] = await safeQuery(
         conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM retiros_socios WHERE socio_id = ? AND fecha_retiro BETWEEN ? AND ?",
-        [socioId, summary.period.startDate, summary.period.endDate],
+        `SELECT COALESCE(SUM(monto), 0) AS total
+         FROM retiros_socios
+         WHERE ${retirosWhere.join(" AND ")}`,
+        retirosParams,
         [{}]
     );
 
@@ -469,23 +1008,38 @@ export async function getUpcomingDueItems(query = {}) {
     const today = normalizeDate(new Date());
     const limitDate = addDays(today, windowDays);
 
+    const costoFijoIdColumn = await getCostoFijoIdColumn(conexion);
+    const costoFijoServicioColumn = await getCostoFijoServicioColumn(conexion);
+    const servicioIdColumn = await getServicioIdColumn(conexion);
+    const costoVariableIdColumn = await getCostoVariableIdColumn(conexion);
+
+    const fixedFilter = await getCostosFijosNotDeletedFilter(conexion, "cf");
+    const fixedWhere = ["(cf.fecha_fin IS NULL OR cf.fecha_fin >= CURDATE())"];
+    const fixedParams = [];
+    if (fixedFilter.whereClause) {
+        fixedWhere.push(fixedFilter.whereClause);
+        fixedParams.push(...fixedFilter.params);
+    }
+
     let fixedCosts = await safeQuery(
         conexion,
-        `SELECT cf.*, s.nombre as servicio_nombre
+        `SELECT cf.*, cf.${costoFijoIdColumn} AS id, s.nombre as servicio_nombre
          FROM costos_fijos cf
-         LEFT JOIN servicios s ON cf.servicio_id = s.id
-         WHERE cf.fecha_fin IS NULL OR cf.fecha_fin >= CURDATE()`,
-        [],
+         LEFT JOIN servicios s ON cf.${costoFijoServicioColumn} = s.${servicioIdColumn}
+         WHERE ${fixedWhere.join(" AND ")}`,
+        fixedParams,
         null
     );
 
     if (!Array.isArray(fixedCosts)) {
+        const fallbackWhere = fixedFilter.whereClause ? `WHERE ${fixedFilter.whereClause}` : "";
         fixedCosts = await safeQuery(
             conexion,
-            `SELECT cf.*, s.nombre as servicio_nombre
+            `SELECT cf.*, cf.${costoFijoIdColumn} AS id, s.nombre as servicio_nombre
              FROM costos_fijos cf
-             LEFT JOIN servicios s ON cf.servicio_id = s.id`,
-            [],
+             LEFT JOIN servicios s ON cf.${costoFijoServicioColumn} = s.${servicioIdColumn}
+             ${fallbackWhere}`,
+            fixedFilter.params,
             []
         );
     }
@@ -510,10 +1064,19 @@ export async function getUpcomingDueItems(query = {}) {
 
     let variableItems = [];
     try {
+        const variableFilter = await getCostosVariablesNotDeletedFilter(conexion);
+        const variableWhere = ["fecha_vencimiento IS NOT NULL"];
+        const variableParams = [];
+        if (variableFilter.whereClause) {
+            variableWhere.push(variableFilter.whereClause);
+            variableParams.push(...variableFilter.params);
+        }
+
         const variableCosts = await conexion.ejecutarQuery(
-            `SELECT id, concepto, monto, fecha_vencimiento, observaciones
+            `SELECT ${costoVariableIdColumn} AS id, concepto, monto, fecha_vencimiento, observaciones
              FROM costos_variables
-             WHERE fecha_vencimiento IS NOT NULL`
+             WHERE ${variableWhere.join(" AND ")}`,
+            variableParams
         );
 
         variableItems = (Array.isArray(variableCosts) ? variableCosts : [])

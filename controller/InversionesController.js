@@ -1,5 +1,6 @@
 import Inversiones from "../model/Inversiones.js";
 import { getFinancialSummary } from "../services/financeService.js";
+import { parsePagination } from "../utils/pagination.js";
 
 const FONDOS_VALIDOS = ["reinversion", "emergencia"];
 const MOVIMIENTOS_VALIDOS = ["inversion", "retiro"];
@@ -10,7 +11,12 @@ export default class InversionesController {
     static async obtenerInversiones(req, res) {
         try {
             const inversiones = new Inversiones();
-            const data = await inversiones.selectAllInversiones();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const data = await inversiones.selectAllInversiones(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(Array.isArray(data) ? data : []);
         } catch (error) {
             console.error(error);
@@ -103,7 +109,10 @@ export default class InversionesController {
 
             const inversiones = new Inversiones();
             const resultado = await inversiones.deleteInversion(id);
-            return res.json({ ok: true, success: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Inversión no encontrada o ya eliminada" });
+            }
+            return res.json({ ok: true, success: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             return res.status(500).json({ message: "Error al eliminar inversión" });

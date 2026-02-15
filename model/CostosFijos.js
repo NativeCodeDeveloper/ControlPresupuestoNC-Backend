@@ -1,5 +1,41 @@
 import DataBase from "../config/Database.js";
 
+const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
+let costosFijosColumnsCache = null;
+
+const getCostosFijosColumns = async (conexion) => {
+    if (costosFijosColumnsCache) return costosFijosColumnsCache;
+
+    const rows = await conexion.ejecutarQuery(
+        `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'costos_fijos'`,
+        []
+    );
+
+    costosFijosColumnsCache = new Set(
+        (Array.isArray(rows) ? rows : [])
+            .map((row) => String(row.COLUMN_NAME || "").trim())
+            .filter(Boolean)
+    );
+
+    return costosFijosColumnsCache;
+};
+
+const hasCostosFijosColumn = async (conexion, columnName) => {
+    const cols = await getCostosFijosColumns(conexion);
+    return cols.has(columnName);
+};
+
+const getCostoFijoIdColumn = async (conexion) => (
+    (await hasCostosFijosColumn(conexion, "id_costo_fijo")) ? "id_costo_fijo" : "id"
+);
+
+const getCostoFijoServicioColumn = async (conexion) => (
+    (await hasCostosFijosColumn(conexion, "id_servicio")) ? "id_servicio" : "servicio_id"
+);
+
 export default class CostosFijos {
     constructor(
         id,
@@ -24,14 +60,36 @@ export default class CostosFijos {
     }
 
     // OBTENER TODOS LOS COSTOS FIJOS
-    async selectAllCostosFijos() {
+    async selectAllCostosFijos(pagination = null) {
         const conexion = DataBase.getInstance();
-        const query = `SELECT cf.*, s.nombre as servicio_nombre 
-                       FROM costos_fijos cf
-                       LEFT JOIN servicios s ON cf.servicio_id = s.id
-                       ORDER BY cf.fecha_inicio DESC`;
         try {
-            const resultado = await conexion.ejecutarQuery(query, []);
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const servicioColumn = await getCostoFijoServicioColumn(conexion);
+            const servicioIdColumn = await hasCostosFijosColumn(conexion, "id_servicio") ? "id_servicio" : "id";
+            const where = [];
+            const params = [];
+
+            if (hasActivo) {
+                where.push("cf.activo = 1");
+            } else if (hasNotas) {
+                where.push("(cf.notas IS NULL OR cf.notas NOT LIKE ?)");
+                params.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+            let query = `SELECT cf.*, cf.${idColumn} AS id, s.${servicioIdColumn} AS servicio_id, s.nombre as servicio_nombre
+                           FROM costos_fijos cf
+                           LEFT JOIN servicios s ON cf.${servicioColumn} = s.${servicioIdColumn}
+                           ${whereClause}
+                           ORDER BY cf.fecha_inicio DESC`;
+            if (pagination) {
+                query += " LIMIT ? OFFSET ?";
+                params.push(Number(pagination.limit), Number(pagination.offset));
+            }
+
+            const resultado = await conexion.ejecutarQuery(query, params);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
             throw new Error('Error al obtener costos fijos de la base de datos');
@@ -39,15 +97,35 @@ export default class CostosFijos {
     }
 
     // OBTENER COSTOS FIJOS ACTIVOS
-    async selectCostosFixoActivos() {
+    async selectCostosFixoActivos(pagination = null) {
         const conexion = DataBase.getInstance();
-        const query = `SELECT cf.*, s.nombre as servicio_nombre 
-                       FROM costos_fijos cf
-                       LEFT JOIN servicios s ON cf.servicio_id = s.id
-                       WHERE cf.fecha_fin IS NULL OR cf.fecha_fin >= CURDATE()
-                       ORDER BY cf.fecha_inicio DESC`;
         try {
-            const resultado = await conexion.ejecutarQuery(query, []);
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const servicioColumn = await getCostoFijoServicioColumn(conexion);
+            const servicioIdColumn = await hasCostosFijosColumn(conexion, "id_servicio") ? "id_servicio" : "id";
+            const where = ["(cf.fecha_fin IS NULL OR cf.fecha_fin >= CURDATE())"];
+            const params = [];
+
+            if (hasActivo) {
+                where.push("cf.activo = 1");
+            } else if (hasNotas) {
+                where.push("(cf.notas IS NULL OR cf.notas NOT LIKE ?)");
+                params.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            let query = `SELECT cf.*, cf.${idColumn} AS id, s.${servicioIdColumn} AS servicio_id, s.nombre as servicio_nombre
+                           FROM costos_fijos cf
+                           LEFT JOIN servicios s ON cf.${servicioColumn} = s.${servicioIdColumn}
+                           WHERE ${where.join(" AND ")}
+                           ORDER BY cf.fecha_inicio DESC`;
+            if (pagination) {
+                query += " LIMIT ? OFFSET ?";
+                params.push(Number(pagination.limit), Number(pagination.offset));
+            }
+
+            const resultado = await conexion.ejecutarQuery(query, params);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
             throw new Error('Error al obtener costos fijos activos');
@@ -57,12 +135,27 @@ export default class CostosFijos {
     // OBTENER COSTO FIJO POR ID
     async selectCostoFijoById(id) {
         const conexion = DataBase.getInstance();
-        const query = `SELECT cf.*, s.nombre as servicio_nombre 
-                       FROM costos_fijos cf
-                       LEFT JOIN servicios s ON cf.servicio_id = s.id
-                       WHERE cf.id = ?`;
-        const param = [id];
         try {
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const servicioColumn = await getCostoFijoServicioColumn(conexion);
+            const servicioIdColumn = await hasCostosFijosColumn(conexion, "id_servicio") ? "id_servicio" : "id";
+            const where = [`cf.${idColumn} = ?`];
+            const param = [id];
+
+            if (hasActivo) {
+                where.push("cf.activo = 1");
+            } else if (hasNotas) {
+                where.push("(cf.notas IS NULL OR cf.notas NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `SELECT cf.*, cf.${idColumn} AS id, s.${servicioIdColumn} AS servicio_id, s.nombre as servicio_nombre
+                           FROM costos_fijos cf
+                           LEFT JOIN servicios s ON cf.${servicioColumn} = s.${servicioIdColumn}
+                           WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado[0] : null;
         } catch (error) {
@@ -73,10 +166,16 @@ export default class CostosFijos {
     // CREAR NUEVO COSTO FIJO
     async insertCostoFijo(servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas) {
         const conexion = DataBase.getInstance();
-        const query = `INSERT INTO costos_fijos (servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)`;
-        const param = [servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas];
         try {
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const servicioColumn = await getCostoFijoServicioColumn(conexion);
+            const query = hasActivo
+                ? `INSERT INTO costos_fijos (${servicioColumn}, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas, activo)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
+                : `INSERT INTO costos_fijos (${servicioColumn}, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas)
+                   VALUES (?, ?, ?, ?, ?, ?, ?)`;
+            const param = [servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas];
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
@@ -87,10 +186,26 @@ export default class CostosFijos {
     // ACTUALIZAR COSTO FIJO
     async updateCostoFijo(id, servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, fecha_fin, notas) {
         const conexion = DataBase.getInstance();
-        const query = `UPDATE costos_fijos SET servicio_id = ?, proveedor = ?, monto = ?, frecuencia = ?, 
-                       fecha_pago = ?, fecha_inicio = ?, fecha_fin = ?, notas = ? WHERE id = ?`;
-        const param = [servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, fecha_fin, notas, id];
         try {
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const servicioColumn = await getCostoFijoServicioColumn(conexion);
+            const where = [`${idColumn} = ?`];
+            const param = [servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, fecha_fin, notas, id];
+
+            if (hasActivo) {
+                where.push("activo = 1");
+            } else if (hasNotas) {
+                where.push("(notas IS NULL OR notas NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `UPDATE costos_fijos
+                           SET ${servicioColumn} = ?, proveedor = ?, monto = ?, frecuencia = ?,
+                               fecha_pago = ?, fecha_inicio = ?, fecha_fin = ?, notas = ?
+                           WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
@@ -101,9 +216,22 @@ export default class CostosFijos {
     // DESACTIVAR COSTO FIJO (establecer fecha_fin)
     async desactivarCostoFijo(id, fecha_fin) {
         const conexion = DataBase.getInstance();
-        const query = 'UPDATE costos_fijos SET fecha_fin = ? WHERE id = ?';
-        const param = [fecha_fin, id];
         try {
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const where = [`${idColumn} = ?`];
+            const param = [fecha_fin, id];
+
+            if (hasActivo) {
+                where.push("activo = 1");
+            } else if (hasNotas) {
+                where.push("(notas IS NULL OR notas NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `UPDATE costos_fijos SET fecha_fin = ? WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
@@ -114,11 +242,43 @@ export default class CostosFijos {
     // ELIMINAR COSTO FIJO
     async deleteCostoFijo(id) {
         const conexion = DataBase.getInstance();
-        const query = 'DELETE FROM costos_fijos WHERE id = ?';
-        const param = [id];
         try {
-            const resultado = await conexion.ejecutarQuery(query, param);
-            return resultado;
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const hasNotas = await hasCostosFijosColumn(conexion, "notas");
+            const hasFechaFin = await hasCostosFijosColumn(conexion, "fecha_fin");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+
+            if (hasActivo) {
+                const hasEliminadoEn = await hasCostosFijosColumn(conexion, "eliminado_en");
+                const setParts = ["activo = 0"];
+                if (hasEliminadoEn) setParts.push("eliminado_en = NOW()");
+                if (hasFechaFin) setParts.push("fecha_fin = COALESCE(fecha_fin, DATE_SUB(CURDATE(), INTERVAL 1 DAY))");
+
+                const query = `UPDATE costos_fijos
+                               SET ${setParts.join(", ")}
+                               WHERE ${idColumn} = ? AND activo = 1`;
+                return await conexion.ejecutarQuery(query, [id]);
+            }
+
+            const marker = `${SOFT_DELETE_PREFIX}${id}#${Date.now()}#`;
+            const setParts = [];
+            if (hasFechaFin) setParts.push("fecha_fin = COALESCE(fecha_fin, DATE_SUB(CURDATE(), INTERVAL 1 DAY))");
+            if (hasNotas) setParts.push("notas = CONCAT(?, COALESCE(notas, ''))");
+            if (setParts.length === 0) {
+                throw new Error("No hay columnas compatibles para soft delete en costos_fijos");
+            }
+
+            const where = hasNotas
+                ? `${idColumn} = ? AND (notas IS NULL OR notas NOT LIKE ?)`
+                : `${idColumn} = ?`;
+
+            const params = [];
+            if (hasNotas) params.push(marker);
+            params.push(id);
+            if (hasNotas) params.push(`${SOFT_DELETE_PREFIX}%`);
+
+            const query = `UPDATE costos_fijos SET ${setParts.join(", ")} WHERE ${where}`;
+            return await conexion.ejecutarQuery(query, params);
         } catch (error) {
             throw new Error('Error al eliminar costo fijo de la base de datos');
         }

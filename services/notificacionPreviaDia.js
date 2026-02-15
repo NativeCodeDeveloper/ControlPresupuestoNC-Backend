@@ -11,6 +11,17 @@ import DataBase from '../config/Database.js';
  */
 
 const DIRECCION_CLINICA = "SILUETA CHIC, Avenida Irarrázaval 1989 OF 204 SUR, Ñuñoa, Santiago, Chile";
+let recordatoriosDeshabilitadosPorEsquema = false;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 /**
  * Envía el correo de recordatorio usando Brevo API
@@ -151,7 +162,7 @@ Silueta Chic
   };
 
   try {
-    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+    const resp = await fetchWithTimeout("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -159,7 +170,7 @@ Silueta Chic
         "api-key": BREVO_API_KEY
       },
       body: JSON.stringify(payload)
-    });
+    }, Number(process.env.EMAIL_TIMEOUT_MS || 15000));
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
@@ -179,6 +190,7 @@ Silueta Chic
  * Marca el recordatorio como enviado en la base de datos
  */
 async function marcarRecordatorioEnviado(id_reserva, tipoRecordatorio) {
+  if (recordatoriosDeshabilitadosPorEsquema) return;
   try {
     const conexion = DataBase.getInstance();
     const campo = tipoRecordatorio === '12h' ? 'recordatorio12h' : 'recordatorio6h';
@@ -195,6 +207,7 @@ async function marcarRecordatorioEnviado(id_reserva, tipoRecordatorio) {
  * Busca citas entre 5.5 y 12.5 horas en el futuro
  */
 async function obtenerReservasParaRecordatorio() {
+  if (recordatoriosDeshabilitadosPorEsquema) return [];
   try {
     const conexion = DataBase.getInstance();
 
@@ -221,6 +234,17 @@ async function obtenerReservasParaRecordatorio() {
     const reservas = await conexion.ejecutarQuery(query);
     return Array.isArray(reservas) ? reservas : [];
   } catch (error) {
+    const msg = String(error?.message || "");
+    const noTable = error?.code === "ER_NO_SUCH_TABLE"
+      || msg.includes("doesn't exist")
+      || msg.toLowerCase().includes("doesn't exist");
+
+    if (noTable) {
+      recordatoriosDeshabilitadosPorEsquema = true;
+      console.warn("[RECORDATORIO] Tabla de reservas no existe en este esquema. Recordatorios automáticos deshabilitados.");
+      return [];
+    }
+
     console.error("[RECORDATORIO] Error al obtener reservas:", error.message);
     return [];
   }

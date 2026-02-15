@@ -1,5 +1,64 @@
 import DataBase from "../config/Database.js";
 
+const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
+let proyectosColumnsCache = null;
+
+const getProyectosColumns = async (conexion) => {
+    if (proyectosColumnsCache) return proyectosColumnsCache;
+
+    const rows = await conexion.ejecutarQuery(
+        `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'proyectos'`,
+        []
+    );
+
+    proyectosColumnsCache = new Set(
+        (Array.isArray(rows) ? rows : [])
+            .map((row) => String(row.COLUMN_NAME || "").trim())
+            .filter(Boolean)
+    );
+
+    return proyectosColumnsCache;
+};
+
+const hasProyectosColumn = async (conexion, columnName) => {
+    const cols = await getProyectosColumns(conexion);
+    return cols.has(columnName);
+};
+
+const getProyectoIdColumn = async (conexion) => (
+    (await hasProyectosColumn(conexion, "id_proyecto")) ? "id_proyecto" : "id"
+);
+
+const getProyectoTipoColumn = async (conexion) => (
+    (await hasProyectosColumn(conexion, "id_tipo_proyecto")) ? "id_tipo_proyecto" : "tipo_proyecto_id"
+);
+
+const getProyectoEstadoColumn = async (conexion) => (
+    (await hasProyectosColumn(conexion, "id_estado_proyecto")) ? "id_estado_proyecto" : "estado_proyecto_id"
+);
+
+const getProyectoPagosColumns = async (conexion) => {
+    const rows = await conexion.ejecutarQuery(
+        `SELECT COLUMN_NAME
+         FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE()
+           AND TABLE_NAME = 'proyecto_pagos'`,
+        []
+    );
+    return new Set((Array.isArray(rows) ? rows : []).map((r) => String(r.COLUMN_NAME || "").trim()).filter(Boolean));
+};
+
+const getProyectoPagoIdColumn = async (conexion) => (
+    (await getProyectoPagosColumns(conexion)).has("id_proyecto_pago") ? "id_proyecto_pago" : "id"
+);
+
+const getProyectoPagoFkColumn = async (conexion) => (
+    (await getProyectoPagosColumns(conexion)).has("id_proyecto") ? "id_proyecto" : "proyecto_id"
+);
+
 export default class Proyectos {
     constructor(
         id,
@@ -36,15 +95,40 @@ export default class Proyectos {
     }
 
     // OBTENER TODOS LOS PROYECTOS
-    async selectAllProyectos() {
+    async selectAllProyectos(pagination = null) {
         const conexion = DataBase.getInstance();
-        const query = `SELECT p.*, tp.nombre as tipo_nombre, ep.nombre as estado_nombre 
-                       FROM proyectos p
-                       LEFT JOIN tipos_proyectos tp ON p.tipo_proyecto_id = tp.id
-                       LEFT JOIN estados_proyectos ep ON p.estado_proyecto_id = ep.id
-                       ORDER BY p.fecha_creacion DESC`;
         try {
-            const resultado = await conexion.ejecutarQuery(query, []);
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const idColumn = await getProyectoIdColumn(conexion);
+            const tipoColumn = await getProyectoTipoColumn(conexion);
+            const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const tipoPkColumn = tipoColumn === "id_tipo_proyecto" ? "id_tipo_proyecto" : "id";
+            const estadoPkColumn = estadoColumn === "id_estado_proyecto" ? "id_estado_proyecto" : "id";
+            const where = [];
+            const params = [];
+
+            if (hasActivo) {
+                where.push("p.activo = 1");
+            } else if (hasObservaciones) {
+                where.push("(p.observaciones IS NULL OR p.observaciones NOT LIKE ?)");
+                params.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+            let query = `SELECT p.*, p.${idColumn} AS id, p.${tipoColumn} AS tipo_proyecto_id, p.${estadoColumn} AS estado_proyecto_id,
+                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre
+                           FROM proyectos p
+                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn}
+                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn}
+                           ${whereClause}
+                           ORDER BY p.fecha_creacion DESC`;
+            if (pagination) {
+                query += " LIMIT ? OFFSET ?";
+                params.push(Number(pagination.limit), Number(pagination.offset));
+            }
+
+            const resultado = await conexion.ejecutarQuery(query, params);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
             throw new Error('Error al obtener proyectos de la base de datos');
@@ -54,13 +138,31 @@ export default class Proyectos {
     // OBTENER PROYECTO POR ID
     async selectProyectoById(id) {
         const conexion = DataBase.getInstance();
-        const query = `SELECT p.*, tp.nombre as tipo_nombre, ep.nombre as estado_nombre 
-                       FROM proyectos p
-                       LEFT JOIN tipos_proyectos tp ON p.tipo_proyecto_id = tp.id
-                       LEFT JOIN estados_proyectos ep ON p.estado_proyecto_id = ep.id
-                       WHERE p.id = ?`;
-        const param = [id];
         try {
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const idColumn = await getProyectoIdColumn(conexion);
+            const tipoColumn = await getProyectoTipoColumn(conexion);
+            const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const tipoPkColumn = tipoColumn === "id_tipo_proyecto" ? "id_tipo_proyecto" : "id";
+            const estadoPkColumn = estadoColumn === "id_estado_proyecto" ? "id_estado_proyecto" : "id";
+            const where = [`p.${idColumn} = ?`];
+            const param = [id];
+
+            if (hasActivo) {
+                where.push("p.activo = 1");
+            } else if (hasObservaciones) {
+                where.push("(p.observaciones IS NULL OR p.observaciones NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `SELECT p.*, p.${idColumn} AS id, p.${tipoColumn} AS tipo_proyecto_id, p.${estadoColumn} AS estado_proyecto_id,
+                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre
+                           FROM proyectos p
+                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn}
+                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn}
+                           WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado[0] : null;
         } catch (error) {
@@ -71,22 +173,39 @@ export default class Proyectos {
     // CREAR NUEVO PROYECTO
     async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones) {
         const conexion = DataBase.getInstance();
-        const query = `INSERT INTO proyectos 
-                       (codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
-                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-        const param = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
-                      email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega || null, observaciones];
         try {
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const tipoColumn = await getProyectoTipoColumn(conexion);
+            const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const query = hasActivo
+                ? `INSERT INTO proyectos
+                   (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
+                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, activo)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+                : `INSERT INTO proyectos
+                   (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
+                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            const param = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente,
+                email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega || null, observaciones];
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
             try {
                 // Compatibilidad con versiones anteriores del esquema.
-                const fallbackQuery = `INSERT INTO proyectos 
-                                       (codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, 
-                                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones)
-                                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+                const hasActivo = await hasProyectosColumn(conexion, "activo");
+                const tipoColumn = await getProyectoTipoColumn(conexion);
+                const estadoColumn = await getProyectoEstadoColumn(conexion);
+                const fallbackQuery = hasActivo
+                    ? `INSERT INTO proyectos
+                       (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
+                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones, activo)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+                    : `INSERT INTO proyectos
+                       (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
+                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
                 const fallbackParam = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente,
                     email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones];
                 return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
@@ -99,13 +218,28 @@ export default class Proyectos {
     // ACTUALIZAR PROYECTO
     async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones) {
         const conexion = DataBase.getInstance();
-        const query = `UPDATE proyectos SET nombre = ?, tipo_proyecto_id = ?, estado_proyecto_id = ?, 
-                       nombre_cliente = ?, rut_cliente = ?, email_cliente = ?, telefono_cliente = ?, 
-                       profesion_cliente = ?, monto_acordado = ?, fecha_entrega = ?, observaciones = ? 
-                       WHERE id = ?`;
-        const param = [nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, 
-                      telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, id];
         try {
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const idColumn = await getProyectoIdColumn(conexion);
+            const tipoColumn = await getProyectoTipoColumn(conexion);
+            const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const where = [`${idColumn} = ?`];
+            const param = [nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente,
+                telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, id];
+
+            if (hasActivo) {
+                where.push("activo = 1");
+            } else if (hasObservaciones) {
+                where.push("(observaciones IS NULL OR observaciones NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `UPDATE proyectos SET nombre = ?, ${tipoColumn} = ?, ${estadoColumn} = ?,
+                           nombre_cliente = ?, rut_cliente = ?, email_cliente = ?, telefono_cliente = ?,
+                           profesion_cliente = ?, monto_acordado = ?, fecha_entrega = ?, observaciones = ?
+                           WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
@@ -116,9 +250,23 @@ export default class Proyectos {
     // CAMBIAR ESTADO DEL PROYECTO
     async updateEstadoProyecto(id, estado_proyecto_id) {
         const conexion = DataBase.getInstance();
-        const query = 'UPDATE proyectos SET estado_proyecto_id = ? WHERE id = ?';
-        const param = [estado_proyecto_id, id];
         try {
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const idColumn = await getProyectoIdColumn(conexion);
+            const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const where = [`${idColumn} = ?`];
+            const param = [estado_proyecto_id, id];
+
+            if (hasActivo) {
+                where.push("activo = 1");
+            } else if (hasObservaciones) {
+                where.push("(observaciones IS NULL OR observaciones NOT LIKE ?)");
+                param.push(`${SOFT_DELETE_PREFIX}%`);
+            }
+
+            const query = `UPDATE proyectos SET ${estadoColumn} = ? WHERE ${where.join(" AND ")}`;
+
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
@@ -129,22 +277,42 @@ export default class Proyectos {
     // ELIMINAR PROYECTO
     async deleteProyecto(id) {
         const conexion = DataBase.getInstance();
-        const query = 'DELETE FROM proyectos WHERE id = ?';
-        const param = [id];
         try {
-            const resultado = await conexion.ejecutarQuery(query, param);
-            return resultado;
+            const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const idColumn = await getProyectoIdColumn(conexion);
+            if (hasActivo) {
+                const hasEliminadoEn = await hasProyectosColumn(conexion, "eliminado_en");
+                const query = hasEliminadoEn
+                    ? `UPDATE proyectos SET activo = 0, eliminado_en = NOW() WHERE ${idColumn} = ? AND activo = 1`
+                    : `UPDATE proyectos SET activo = 0 WHERE ${idColumn} = ? AND activo = 1`;
+                return await conexion.ejecutarQuery(query, [id]);
+            }
+
+            const marker = `${SOFT_DELETE_PREFIX}${id}#${Date.now()}#`;
+            const query = `UPDATE proyectos
+                           SET observaciones = CONCAT(?, COALESCE(observaciones, ''))
+                           WHERE ${idColumn} = ? AND (observaciones IS NULL OR observaciones NOT LIKE ?)`;
+            return await conexion.ejecutarQuery(query, [marker, id, `${SOFT_DELETE_PREFIX}%`]);
         } catch (error) {
             throw new Error('Error al eliminar proyecto de la base de datos');
         }
     }
 
     // OBTENER PAGOS DE UN PROYECTO
-    async selectProyectoPagos(proyecto_id) {
+    async selectProyectoPagos(proyecto_id, pagination = null) {
         const conexion = DataBase.getInstance();
-        const query = 'SELECT * FROM proyecto_pagos WHERE proyecto_id = ? ORDER BY fecha_pago DESC';
-        const param = [proyecto_id];
         try {
+            const pagoIdColumn = await getProyectoPagoIdColumn(conexion);
+            const proyectoFkColumn = await getProyectoPagoFkColumn(conexion);
+            let query = `SELECT *, ${pagoIdColumn} AS id, ${proyectoFkColumn} AS proyecto_id
+                           FROM proyecto_pagos
+                           WHERE ${proyectoFkColumn} = ?
+                           ORDER BY fecha_pago DESC`;
+            const param = [proyecto_id];
+            if (pagination) {
+                query += " LIMIT ? OFFSET ?";
+                param.push(Number(pagination.limit), Number(pagination.offset));
+            }
             const resultado = await conexion.ejecutarQuery(query, param);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
@@ -155,16 +323,18 @@ export default class Proyectos {
     // REGISTRAR PAGO DE PROYECTO (y actualizar monto_pagado)
     async insertProyectoPago(proyecto_id, concepto, monto, fecha_pago, numero_comprobante, notas) {
         const conexion = DataBase.getInstance();
-        const queryInsert = `INSERT INTO proyecto_pagos (proyecto_id, concepto, monto, fecha_pago, numero_comprobante, notas)
-                       VALUES (?, ?, ?, ?, ?, ?)`;
-        const paramInsert = [proyecto_id, concepto, monto, fecha_pago, numero_comprobante, notas];
         try {
+            const proyectoIdColumn = await getProyectoIdColumn(conexion);
+            const proyectoFkColumn = await getProyectoPagoFkColumn(conexion);
+            const queryInsert = `INSERT INTO proyecto_pagos (${proyectoFkColumn}, concepto, monto, fecha_pago, numero_comprobante, notas)
+                                 VALUES (?, ?, ?, ?, ?, ?)`;
+            const paramInsert = [proyecto_id, concepto, monto, fecha_pago, numero_comprobante, notas];
             const resultado = await conexion.ejecutarQuery(queryInsert, paramInsert);
 
             // Actualizar monto_pagado en el proyecto
             const queryUpdate = `UPDATE proyectos SET monto_pagado = (
-                SELECT COALESCE(SUM(monto), 0) FROM proyecto_pagos WHERE proyecto_id = ?
-            ) WHERE id = ?`;
+                SELECT COALESCE(SUM(monto), 0) FROM proyecto_pagos WHERE ${proyectoFkColumn} = ?
+            ) WHERE ${proyectoIdColumn} = ?`;
             await conexion.ejecutarQuery(queryUpdate, [proyecto_id, proyecto_id]);
 
             return resultado;

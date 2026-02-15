@@ -1,5 +1,6 @@
 import RetirosSocios from "../model/RetirosSocios.js";
 import { getPartnerAvailableAmount } from "../services/financeService.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class RetirosSociosController {
     constructor() {}
@@ -29,7 +30,12 @@ export default class RetirosSociosController {
             if (!id) return res.status(400).json({ message: "ID de socio requerido" });
 
             const retiros = new RetirosSocios();
-            const dataRetiros = await retiros.selectRetirosBySocio(id);
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataRetiros = await retiros.selectRetirosBySocio(id, pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataRetiros);
         } catch (error) {
             console.error(error);
@@ -97,7 +103,10 @@ export default class RetirosSociosController {
 
             const retiros = new RetirosSocios();
             const resultado = await retiros.deleteRetiro(rid);
-            return res.json({ ok: true, success: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Retiro no encontrado o ya eliminado" });
+            }
+            return res.json({ ok: true, success: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al eliminar retiro" });

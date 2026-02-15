@@ -24,9 +24,19 @@ export default class ConfiguracionFinancieraController {
                 return res.status(400).json({ message: "Faltan datos requeridos" });
             }
 
+            const emergencia = Number(porcentaje_fondo_emergencia);
+            const reinversion = Number(porcentaje_reinversion);
+            if (!Number.isFinite(emergencia) || !Number.isFinite(reinversion)) {
+                return res.status(400).json({ message: "Porcentajes inválidos" });
+            }
+            if (emergencia < 0 || emergencia > 100 || reinversion < 0 || reinversion > 100) {
+                return res.status(400).json({ message: "Porcentajes fuera de rango (0-100)" });
+            }
+
             const config = new ConfiguracionFinanciera();
-            const resultado = await config.updateConfig(porcentaje_fondo_emergencia, porcentaje_reinversion);
-            return res.json({ ok: true, resultado });
+            const resultado = await config.updateConfig(emergencia, reinversion);
+            const data = await config.selectConfig();
+            return res.json({ ok: true, resultado, data });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al actualizar configuración financiera" });

@@ -91,7 +91,8 @@ export default class ReservaPacientes {
     async eliminarReservaPaciente(id_reserva) {
         try {
             const conexion = DataBase.getInstance();
-            const query = "DELETE FROM reservaPacientes WHERE id_reserva = ?";
+            // Soft delete: mantiene trazabilidad histórica y evita pérdida de datos.
+            const query = "UPDATE reservaPacientes SET estadoPeticion = 0 WHERE id_reserva = ?";
             const param = [id_reserva];
 
             const resultadoQuery = await conexion.ejecutarQuery(query, param);

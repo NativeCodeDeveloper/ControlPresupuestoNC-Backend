@@ -1,3 +1,13 @@
+async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default class NotificacionAgendamiento {
   static async enviarCorreoConfirmacionReserva({
     to,
@@ -142,7 +152,7 @@ export default class NotificacionAgendamiento {
       return;
     }
 
-    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+    const resp = await fetchWithTimeout("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -150,7 +160,7 @@ export default class NotificacionAgendamiento {
         "api-key": BREVO_API_KEY
       },
       body: JSON.stringify(payload)
-    });
+    }, Number(process.env.EMAIL_TIMEOUT_MS || 15000));
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");
@@ -265,7 +275,7 @@ export default class NotificacionAgendamiento {
       return;
     }
 
-    const resp = await fetch("https://api.brevo.com/v3/smtp/email", {
+    const resp = await fetchWithTimeout("https://api.brevo.com/v3/smtp/email", {
       method: "POST",
       headers: {
         accept: "application/json",
@@ -273,7 +283,7 @@ export default class NotificacionAgendamiento {
         "api-key": BREVO_API_KEY
       },
       body: JSON.stringify(payload)
-    });
+    }, Number(process.env.EMAIL_TIMEOUT_MS || 15000));
 
     if (!resp.ok) {
       const errText = await resp.text().catch(() => "");

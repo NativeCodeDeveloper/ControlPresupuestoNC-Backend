@@ -1,4 +1,5 @@
 import Proyectos from "../model/Proyectos.js";
+import { parsePagination } from "../utils/pagination.js";
 
 export default class ProyectosController {
     constructor() {}
@@ -7,7 +8,12 @@ export default class ProyectosController {
     static async obtenerProyectos(req, res) {
         try {
             const proyecto = new Proyectos();
-            const dataProyectos = await proyecto.selectAllProyectos();
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataProyectos = await proyecto.selectAllProyectos(pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataProyectos);
         } catch (error) {
             console.error(error);
@@ -24,6 +30,9 @@ export default class ProyectosController {
             }
             const proyecto = new Proyectos();
             const dataProyecto = await proyecto.selectProyectoById(id);
+            if (!dataProyecto) {
+                return res.status(404).json({ message: "Proyecto no encontrado" });
+            }
             return res.json(dataProyecto);
         } catch (error) {
             console.error(error);
@@ -121,6 +130,9 @@ export default class ProyectosController {
                 fecha_entrega,
                 observaciones
             );
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Proyecto no encontrado o eliminado" });
+            }
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -140,6 +152,9 @@ export default class ProyectosController {
 
             const proyecto = new Proyectos();
             const resultado = await proyecto.updateEstadoProyecto(id, estado_proyecto_id);
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Proyecto no encontrado o eliminado" });
+            }
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error(error);
@@ -157,7 +172,10 @@ export default class ProyectosController {
 
             const proyecto = new Proyectos();
             const resultado = await proyecto.deleteProyecto(id);
-            return res.json({ ok: true, resultado });
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Proyecto no encontrado o ya eliminado" });
+            }
+            return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error(error);
             res.status(500).json({ message: "Error al eliminar proyecto" });
@@ -173,7 +191,12 @@ export default class ProyectosController {
             }
 
             const proyecto = new Proyectos();
-            const dataPagos = await proyecto.selectProyectoPagos(id);
+            const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
+            const dataPagos = await proyecto.selectProyectoPagos(id, pagination);
+            if (pagination) {
+                res.set("x-pagination-limit", String(pagination.limit));
+                res.set("x-pagination-offset", String(pagination.offset));
+            }
             return res.json(dataPagos);
         } catch (error) {
             console.error(error);
