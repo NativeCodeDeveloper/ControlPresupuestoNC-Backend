@@ -1,10 +1,23 @@
 import CostosFijos from "../model/CostosFijos.js";
 import { parsePagination } from "../utils/pagination.js";
 
+/**
+ * CostosFixosController
+ * Gestiona los costos fijos del negocio: gastos recurrentes con monto y
+ * frecuencia conocida (Mensual, Trimestral, Anual).
+ * Cada costo fijo está asociado a un servicio/rubro del catálogo.
+ * Los costos fijos impactan el cálculo de egresos y devengados en el resumen financiero.
+ * Modelo: CostosFijos.js
+ */
 export default class CostosFixosController {
     constructor() {}
 
-    // OBTENER TODOS LOS COSTOS FIJOS
+    /**
+     * obtenerCostosFijos - Lista todos los costos fijos registrados (activos e inactivos).
+     * Ruta: GET /api/costos-fijos
+     * Query: limit, offset (paginación opcional, por defecto 500 registros)
+     * Headers respuesta: x-pagination-limit, x-pagination-offset
+     */
     static async obtenerCostosFijos(req, res) {
         try {
             const costo = new CostosFijos();
@@ -16,12 +29,17 @@ export default class CostosFixosController {
             }
             return res.json(dataCostos);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener costos fijos" });
+            console.error("[CostosFixosController.obtenerCostosFijos]", error);
+            return res.status(500).json({ message: "Error al obtener costos fijos" });
         }
     }
 
-    // OBTENER COSTOS FIJOS ACTIVOS
+    /**
+     * obtenerCostosFixosActivos - Lista solo los costos fijos actualmente vigentes.
+     * Un costo fijo es activo si no tiene fecha_fin o esta es futura.
+     * Ruta: GET /api/costos-fijos/activos
+     * Query: limit, offset (paginación opcional)
+     */
     static async obtenerCostosFixosActivos(req, res) {
         try {
             const costo = new CostosFijos();
@@ -33,12 +51,16 @@ export default class CostosFixosController {
             }
             return res.json(dataCostos);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener costos fijos activos" });
+            console.error("[CostosFixosController.obtenerCostosFixosActivos]", error);
+            return res.status(500).json({ message: "Error al obtener costos fijos activos" });
         }
     }
 
-    // OBTENER UN COSTO FIJO POR ID
+    /**
+     * obtenerCostoFijoPorId - Obtiene un costo fijo específico por su ID.
+     * Ruta: GET /api/costos-fijos/:id
+     * Params: id (ID del costo fijo)
+     */
     static async obtenerCostoFijoPorId(req, res) {
         try {
             const { id } = req.params;
@@ -52,27 +74,45 @@ export default class CostosFixosController {
             }
             return res.json(dataCosto);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener costo fijo" });
+            console.error("[CostosFixosController.obtenerCostoFijoPorId]", error);
+            return res.status(500).json({ message: "Error al obtener costo fijo" });
         }
     }
 
-    // CREAR NUEVO COSTO FIJO
+    /**
+     * crearCostoFijo - Crea un nuevo costo fijo asociado a un servicio/rubro.
+     * Si no se provee servicio_id pero sí nombre o categoria, busca el servicio por nombre
+     * y lo crea automáticamente si no existe (upsert de servicio).
+     * Ruta: POST /api/costos-fijos
+     * Body: {
+     *   servicio_id (number, requerido si no viene nombre/categoria),
+     *   nombre | categoria (string, alternativa a servicio_id — busca/crea el servicio),
+     *   monto (number, requerido),
+     *   frecuencia ("Mensual" | "Trimestral" | "Anual", requerido),
+     *   proveedor (string, opcional),
+     *   fecha_pago (number, día del mes 1-31, opcional),
+     *   fecha_inicio (YYYY-MM-DD, opcional — default hoy),
+     *   notas (string, opcional)
+     * }
+     */
     static async crearCostoFijo(req, res) {
         try {
             const { servicio_id, nombre, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, notas, categoria } = req.body;
 
-            // Si no viene servicio_id pero viene nombre/categoria, buscar o crear el servicio
+            // Si no viene servicio_id pero sí nombre/categoria, buscar o crear el servicio dinámicamente
             let servicioIdFinal = servicio_id;
             if (!servicioIdFinal && (nombre || categoria)) {
+                // Import dinámico para evitar dependencia circular
                 const { default: Servicios } = await import("../model/Servicios.js");
                 const servicioModel = new Servicios();
                 const servicios = await servicioModel.selectAllServicios();
                 const servicioNombre = nombre || categoria;
                 const encontrado = servicios.find(s => s.nombre === servicioNombre);
                 if (encontrado) {
+                    // Reutilizar el servicio existente
                     servicioIdFinal = encontrado.id;
                 } else {
+                    // Crear el servicio nuevo y usar su ID
                     const nuevoServicio = await servicioModel.insertServicio(servicioNombre, null);
                     servicioIdFinal = nuevoServicio.insertId;
                 }
@@ -82,18 +122,26 @@ export default class CostosFixosController {
                 return res.status(400).json({ message: "Faltan datos requeridos (servicio, monto, frecuencia)" });
             }
 
+            // Usar hoy como fecha de inicio si no se provee
             const fechaInicioFinal = fecha_inicio || new Date().toISOString().split('T')[0];
 
             const costo = new CostosFijos();
             const resultado = await costo.insertCostoFijo(servicioIdFinal, proveedor, monto, frecuencia, fecha_pago, fechaInicioFinal, notas);
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al crear costo fijo" });
+            console.error("[CostosFixosController.crearCostoFijo]", error);
+            return res.status(500).json({ message: "Error al crear costo fijo" });
         }
     }
 
-    // ACTUALIZAR COSTO FIJO
+    /**
+     * actualizarCostoFijo - Actualiza todos los campos de un costo fijo existente.
+     * Permite cambiar el monto, frecuencia, proveedor, fechas y notas.
+     * Ruta: PUT /api/costos-fijos/:id
+     * Params: id
+     * Body: { servicio_id, monto (requeridos), proveedor, frecuencia, fecha_pago,
+     *         fecha_inicio, fecha_fin, notas (opcionales) }
+     */
     static async actualizarCostoFijo(req, res) {
         try {
             const { id } = req.params;
@@ -105,17 +153,24 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.updateCostoFijo(id, servicio_id, proveedor, monto, frecuencia, fecha_pago, fecha_inicio, fecha_fin, notas);
+            // affectedRows=0 indica que el registro no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
             }
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al actualizar costo fijo" });
+            console.error("[CostosFixosController.actualizarCostoFijo]", error);
+            return res.status(500).json({ message: "Error al actualizar costo fijo" });
         }
     }
 
-    // DESACTIVAR COSTO FIJO
+    /**
+     * desactivarCostoFijo - Desactiva un costo fijo estableciendo su fecha de fin.
+     * El costo deja de aparecer como activo y no se considera en futuros períodos.
+     * Ruta: PATCH /api/costos-fijos/:id/desactivar
+     * Params: id
+     * Body: { fecha_fin (YYYY-MM-DD, requerido) }
+     */
     static async desactivarCostoFijo(req, res) {
         try {
             const { id } = req.params;
@@ -132,12 +187,17 @@ export default class CostosFixosController {
             }
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al desactivar costo fijo" });
+            console.error("[CostosFixosController.desactivarCostoFijo]", error);
+            return res.status(500).json({ message: "Error al desactivar costo fijo" });
         }
     }
 
-    // ELIMINAR COSTO FIJO
+    /**
+     * eliminarCostoFijo - Realiza soft-delete de un costo fijo.
+     * affectedRows=0 indica que ya estaba eliminado o no existe.
+     * Ruta: DELETE /api/costos-fijos/:id
+     * Params: id
+     */
     static async eliminarCostoFijo(req, res) {
         try {
             const { id } = req.params;
@@ -147,13 +207,14 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.deleteCostoFijo(id);
+            // affectedRows=0 indica que el registro no existe o ya fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo fijo no encontrado o ya eliminado" });
             }
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al eliminar costo fijo" });
+            console.error("[CostosFixosController.eliminarCostoFijo]", error);
+            return res.status(500).json({ message: "Error al eliminar costo fijo" });
         }
     }
 }

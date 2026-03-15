@@ -1,9 +1,47 @@
+/**
+ * financeService.js
+ * Servicio central de cálculo financiero del sistema de control presupuestario.
+ *
+ * Responsabilidades:
+ *   - Calcular el resumen financiero de un período (ingresos, egresos, utilidad neta,
+ *     deducciones para fondos, disponible por socio).
+ *   - Calcular el disponible acumulado e individual de cada socio para retiros.
+ *   - Listar costos con vencimiento próximo (costos fijos y variables).
+ *   - Generar el flujo de caja anual mes a mes.
+ *
+ * Diseño:
+ *   - Todas las funciones operan sobre el pool singleton de DataBase.
+ *   - Se usa `safeQuery` para envolver queries que pueden fallar si la tabla o columna
+ *     no existe (compatibilidad con distintos esquemas de BD).
+ *   - `tableColumnsCache` cachea la estructura de las tablas para evitar múltiples
+ *     consultas a information_schema en la misma petición.
+ *   - Los soft-deletes se detectan por columna `activo` o por prefijo en campos de texto
+ *     ([ELIMINADO]#), según lo que exista en el esquema real de la BD.
+ *
+ * Funciones exportadas:
+ *   - getPeriodFromQuery(query)         → normaliza mes/año desde query params
+ *   - getFinancialSummary(query)        → resumen financiero completo de un período
+ *   - getPartnerAvailableAmount(id, q)  → disponible de un socio para retirar
+ *   - getUpcomingDueItems(query)        → costos con vencimiento próximo
+ *   - getFlujoCajaAnual(query)          → flujo de caja mes a mes de un año
+ */
 import DataBase from "../config/Database.js";
 
+// Prefijo usado por el modelo para marcar socios eliminados (soft-delete por nombre)
 const SOFT_DELETE_SOCIO_PREFIX = "[ELIMINADO]#";
+// Prefijo usado para soft-delete en otras tablas (notas/observaciones)
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
+// Caché en memoria de columnas por tabla para evitar repetir consultas a information_schema
 const tableColumnsCache = new Map();
 
+// Límite máximo de retiro por socio por mes calendario (en pesos chilenos)
+const LIMITE_RETIRO_MENSUAL = 3_000_000;
+
+/**
+ * normalizeMonth - Convierte un valor crudo de mes a número 1-12.
+ * Acepta tanto índice base-0 (0-11, usado por Date.getMonth()) como base-1 (1-12).
+ * Retorna null si el valor es inválido.
+ */
 function normalizeMonth(rawMonth) {
     if (rawMonth === undefined || rawMonth === null || rawMonth === "") return null;
     const value = Number(rawMonth);
@@ -13,6 +51,10 @@ function normalizeMonth(rawMonth) {
     return null;
 }
 
+/**
+ * normalizeYear - Convierte un valor crudo de año a número entero 2000-3000.
+ * Retorna null si el valor está fuera de rango o no es un número válido.
+ */
 function normalizeYear(rawYear) {
     if (rawYear === undefined || rawYear === null || rawYear === "") return null;
     const value = Number(rawYear);
@@ -20,6 +62,11 @@ function normalizeYear(rawYear) {
     return value;
 }
 
+/**
+ * normalizeDate - Normaliza cualquier valor a un objeto Date sin componente horario (UTC 00:00).
+ * Acepta Date, string ISO (YYYY-MM-DD) y string DD/MM/YYYY. Retorna null si es inválido.
+ * Se elimina la hora para evitar comparaciones incorrectas por zona horaria.
+ */
 function normalizeDate(dateLike) {
     if (!dateLike) return null;
 
@@ -94,6 +141,14 @@ function getFrequencyStepMonths(frecuencia) {
     return 1;
 }
 
+// Devengado: monto mensual proporcional de un costo fijo según su frecuencia.
+// Anual $300.000 → $25.000/mes, Trimestral $90.000 → $30.000/mes, Mensual = monto completo.
+function getMonthlyAccrualAmount(cost) {
+    const monto = Number(cost?.monto || 0);
+    const step = getFrequencyStepMonths(cost?.frecuencia);
+    return Number.isFinite(monto) ? monto / step : 0;
+}
+
 function fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex) {
     const periodStart = new Date(periodYear, periodMonthIndex, 1);
     const periodEnd = new Date(periodYear, periodMonthIndex + 1, 0);
@@ -127,18 +182,16 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
     const stepMonths = Math.max(1, Number(getFrequencyStepMonths(cost?.frecuencia) || 1));
 
     // Regla de negocio:
-    // - Mensual: puede vencer dentro del mismo mes de inicio.
-    // - Trimestral/Anual: el primer vencimiento ocurre en el siguiente ciclo.
+    // El primer vencimiento puede ocurrir en el mismo mes de inicio para TODA frecuencia.
+    // Si el día de pago >= día de inicio → primer vencimiento en el mes de inicio.
+    // Si el día de pago < día de inicio → primer vencimiento en el siguiente ciclo.
+    const firstDue = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
     let due;
-    if (stepMonths > 1) {
+    if (firstDue >= start) {
+        due = firstDue;
+    } else {
         const moved = addMonths(start.getFullYear(), start.getMonth(), stepMonths);
         due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
-    } else {
-        due = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
-        if (due < start) {
-            const moved = addMonths(start.getFullYear(), start.getMonth(), stepMonths);
-            due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
-        }
     }
 
     let guard = 0;
@@ -156,6 +209,12 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
     return due;
 }
 
+/**
+ * safeQuery - Wrapper de seguridad para queries que pueden fallar por diferencias de esquema.
+ * Si la query lanza cualquier error (tabla inexistente, columna faltante, etc.),
+ * retorna el `fallback` en lugar de propagar la excepción. Esto permite que el sistema
+ * funcione aunque el esquema de BD no esté completamente actualizado.
+ */
 async function safeQuery(conexion, query, params = [], fallback = []) {
     try {
         return await conexion.ejecutarQuery(query, params);
@@ -164,6 +223,11 @@ async function safeQuery(conexion, query, params = [], fallback = []) {
     }
 }
 
+/**
+ * getTableColumns - Retorna el Set de columnas reales de una tabla en la BD.
+ * Usa `tableColumnsCache` para no repetir la consulta a information_schema en la misma
+ * ejecución. Si la consulta falla o la tabla no existe, retorna un Set vacío (sin cachear).
+ */
 async function getTableColumns(conexion, tableName) {
     if (tableColumnsCache.has(tableName)) return tableColumnsCache.get(tableName);
 
@@ -183,7 +247,11 @@ async function getTableColumns(conexion, tableName) {
             .filter(Boolean)
     );
 
-    tableColumnsCache.set(tableName, cols);
+    // Solo cachear si se obtuvieron columnas; si está vacío (error DB) no guardar
+    // para que la próxima petición reintente la consulta a information_schema.
+    if (cols.size > 0) {
+        tableColumnsCache.set(tableName, cols);
+    }
     return cols;
 }
 
@@ -294,6 +362,43 @@ async function getRetirosNotDeletedFilter(conexion, alias = "") {
     return { whereClause: "", params: [] };
 }
 
+async function getProyectoPkColumn(conexion) {
+    const cols = await getTableColumns(conexion, "proyectos");
+    return cols.has("id_proyecto") ? "id_proyecto" : "id";
+}
+
+async function getPagosProyectoFkColumn(conexion) {
+    const cols = await getTableColumns(conexion, "proyecto_pagos");
+    return cols.has("id_proyecto") ? "id_proyecto" : "proyecto_id";
+}
+
+async function getProyectosNotDeletedSubquery(conexion) {
+    const pkCol = await getProyectoPkColumn(conexion);
+    const fkCol = await getPagosProyectoFkColumn(conexion);
+    const cols = await getTableColumns(conexion, "proyectos");
+
+    if (cols.has("activo")) {
+        return {
+            whereClause: `${fkCol} IN (SELECT ${pkCol} FROM proyectos WHERE activo = 1)`,
+            params: []
+        };
+    }
+
+    if (cols.has("notas")) {
+        return {
+            whereClause: `${fkCol} IN (SELECT ${pkCol} FROM proyectos WHERE (notas IS NULL OR notas NOT LIKE ?))`,
+            params: [`${SOFT_DELETE_PREFIX}%`]
+        };
+    }
+
+    return { whereClause: "", params: [] };
+}
+
+/**
+ * getActivePartners - Obtiene los socios activos con su nombre y porcentaje de participación.
+ * Detecta automáticamente si la tabla usa columna `activo` o soft-delete por nombre
+ * para filtrar correctamente según el esquema de BD disponible.
+ */
 async function getActivePartners(conexion) {
     const sociosColumns = await getTableColumns(conexion, "socios");
     const hasActivoSocios = sociosColumns.has("activo");
@@ -344,6 +449,11 @@ async function getPartnersWithdrawalsMap(conexion, startDate, endDate) {
     return map;
 }
 
+/**
+ * getFinancialConfigRow - Lee la configuración financiera activa (porcentajes de fondos).
+ * Intenta leer el registro con ID=1; si no existe, toma el primer registro disponible.
+ * Si la tabla está vacía o no existe, retorna valores por defecto (emergencia=10%, reinversión=3%).
+ */
 async function getFinancialConfigRow(conexion) {
     const configIdColumn = await getConfigIdColumn(conexion);
 
@@ -521,10 +631,17 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
     const startDate = `${year}-${String(month).padStart(2, "0")}-01`;
     const endDate = new Date(year, month, 0).toISOString().slice(0, 10);
 
+    const pagosFilter = await getProyectosNotDeletedSubquery(conexion);
+    const pagosWhere = ["fecha_pago BETWEEN ? AND ?"];
+    const pagosParams = [startDate, endDate];
+    if (pagosFilter.whereClause) {
+        pagosWhere.push(pagosFilter.whereClause);
+        pagosParams.push(...pagosFilter.params);
+    }
     const [ingresos] = await safeQuery(
         conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos WHERE fecha_pago BETWEEN ? AND ?",
-        [startDate, endDate],
+        `SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos WHERE ${pagosWhere.join(" AND ")}`,
+        pagosParams,
         [{}]
     );
 
@@ -553,6 +670,12 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
     };
 }
 
+/**
+ * getPeriodFromQuery - Extrae y normaliza el período (mes/año) desde los query params.
+ * Acepta: mes/month (1-12) y año/anio/year (ej: 2025).
+ * Si se omiten, usa el mes y año actual del servidor.
+ * Retorna: { month, year, startDate (YYYY-MM-DD), endDate (YYYY-MM-DD) }
+ */
 export function getPeriodFromQuery(query = {}) {
     const month = normalizeMonth(query.mes ?? query.month);
     const year = normalizeYear(query.año ?? query.anio ?? query.year);
@@ -601,15 +724,30 @@ function buildPeriod(year, month) {
     };
 }
 
+/**
+ * getPeriodFinancialCore - Calcula los indicadores financieros clave de un período.
+ * Retorna: ingresos, costos fijos efectivos y devengados, costos variables,
+ * resultado operacional, deducciones (emergencia/reinversión), utilidad neta,
+ * retiros del período y disponible para socios.
+ * Acepta un `context` con datos pre-cargados para evitar re-queries cuando se
+ * llama múltiples veces (ej: en el flujo de caja anual de 12 meses).
+ */
 async function getPeriodFinancialCore(conexion, period, context = {}) {
     const config = context.config || await getFinancialConfigRow(conexion);
     const fixedCostsData = context.fixedCostsData || await getFixedCostsData(conexion);
     const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
+    const pagosFilter = context.pagosFilter || await getProyectosNotDeletedSubquery(conexion);
 
+    const pagosWhere = ["fecha_pago BETWEEN ? AND ?"];
+    const pagosParams = [period.startDate, period.endDate];
+    if (pagosFilter.whereClause) {
+        pagosWhere.push(pagosFilter.whereClause);
+        pagosParams.push(...pagosFilter.params);
+    }
     const [ingresos] = await safeQuery(
         conexion,
-        "SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos WHERE fecha_pago BETWEEN ? AND ?",
-        [period.startDate, period.endDate],
+        `SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos WHERE ${pagosWhere.join(" AND ")}`,
+        pagosParams,
         [{}]
     );
 
@@ -646,6 +784,15 @@ async function getPeriodFinancialCore(conexion, period, context = {}) {
         }, 0);
     const totalExpenses = totalFixedCosts + totalVariableCosts;
 
+    // Devengado: provisión mensual proporcional de TODOS los costos fijos activos.
+    // Un hosting anual de $300.000 impacta $25.000/mes aunque solo se pague una vez al año.
+    const totalCostosDevengados = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+        .filter((cost) => fixedCostIsActiveInPeriod(cost, period.year, period.month - 1))
+        .reduce((sum, cost) => {
+            const amount = getMonthlyAccrualAmount(cost);
+            return sum + (Number.isFinite(amount) ? amount : 0);
+        }, 0);
+
     const operatingResult = totalIncome - totalExpenses;
     const baseForDeductions = Math.max(0, operatingResult);
 
@@ -659,11 +806,19 @@ async function getPeriodFinancialCore(conexion, period, context = {}) {
     const withdrawals = Number(retirosMes?.total || 0);
     const partnersAvailable = Math.max(0, netProfit - withdrawals);
 
+    // Resultado contable (devengado): usa provisión mensual en vez del pago real
+    const resultadoContable = totalIncome - totalCostosDevengados - totalVariableCosts;
+    const baseContable = Math.max(0, resultadoContable);
+    const emergenciaContable = (baseContable * emergencyPct) / 100;
+    const reinversionContable = (baseContable * reinvestPct) / 100;
+    const utilidadContable = resultadoContable - emergenciaContable - reinversionContable;
+
     return {
         totalIncome,
         totalFixedCosts,
         totalFixedCostsCommitted,
         totalVariableCosts,
+        totalCostosDevengados,
         totalExpenses,
         operatingResult,
         emergencyPct,
@@ -672,7 +827,9 @@ async function getPeriodFinancialCore(conexion, period, context = {}) {
         reinvestmentDeduction,
         netProfit,
         withdrawals,
-        partnersAvailable
+        partnersAvailable,
+        resultadoContable,
+        utilidadContable
     };
 }
 
@@ -680,11 +837,18 @@ async function getFirstRelevantPeriod(conexion, targetPeriod, context = {}) {
     const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
     const variableFilter = context.variableFilter || await getCostosVariablesNotDeletedFilter(conexion);
     const fixedFilter = context.fixedFilter || await getCostosFijosNotDeletedFilter(conexion);
+    const pagosFilter = context.pagosFilter || await getProyectosNotDeletedSubquery(conexion);
 
+    const pagosMinWhere = ["fecha_pago <= ?"];
+    const pagosMinParams = [targetPeriod.endDate];
+    if (pagosFilter.whereClause) {
+        pagosMinWhere.push(pagosFilter.whereClause);
+        pagosMinParams.push(...pagosFilter.params);
+    }
     const [pagos] = await safeQuery(
         conexion,
-        "SELECT MIN(fecha_pago) AS min_date FROM proyecto_pagos WHERE fecha_pago <= ?",
-        [targetPeriod.endDate],
+        `SELECT MIN(fecha_pago) AS min_date FROM proyecto_pagos WHERE ${pagosMinWhere.join(" AND ")}`,
+        pagosMinParams,
         [{}]
     );
 
@@ -764,14 +928,21 @@ function mapMonthlyRows(rows = []) {
 async function getMonthlyAggregates(conexion, startDate, endDate, context = {}) {
     const variableFilter = context.variableFilter || await getCostosVariablesNotDeletedFilter(conexion);
     const retirosFilter = context.retirosFilter || await getRetirosNotDeletedFilter(conexion);
+    const pagosFilter = context.pagosFilter || await getProyectosNotDeletedSubquery(conexion);
 
+    const incomeWhere = ["fecha_pago BETWEEN ? AND ?"];
+    const incomeParams = [startDate, endDate];
+    if (pagosFilter.whereClause) {
+        incomeWhere.push(pagosFilter.whereClause);
+        incomeParams.push(...pagosFilter.params);
+    }
     const incomeRows = await safeQuery(
         conexion,
         `SELECT YEAR(fecha_pago) AS year, MONTH(fecha_pago) AS month, COALESCE(SUM(monto), 0) AS total
          FROM proyecto_pagos
-         WHERE fecha_pago BETWEEN ? AND ?
+         WHERE ${incomeWhere.join(" AND ")}
          GROUP BY YEAR(fecha_pago), MONTH(fecha_pago)`,
-        [startDate, endDate],
+        incomeParams,
         []
     );
 
@@ -863,6 +1034,24 @@ async function getPartnersAvailableAccumulated(conexion, targetPeriod, context =
     return Math.max(0, accumulated);
 }
 
+/**
+ * getFinancialSummary - Genera el resumen financiero completo de un período.
+ *
+ * Calcula y retorna:
+ *   - Ingresos del período (suma de pagos de proyectos activos)
+ *   - Costos fijos efectivos (los que vencen este mes) y devengados (provisión mensual)
+ *   - Costos variables del período
+ *   - Resultado operacional (ingresos - egresos)
+ *   - Deducción para fondo de emergencia y reinversión (según configuración)
+ *   - Utilidad neta distribuible entre socios
+ *   - Retiros ya realizados en el período
+ *   - Disponible acumulado para socios (histórico)
+ *   - Disponibilidad individual por socio (asignado, retirado, disponible)
+ *   - Saldos de fondos (reinversión y emergencia): asignado, usado, disponible
+ *
+ * @param {object} query - Query params: mes (1-12), año (ej: 2025)
+ * @returns {object} Resumen financiero completo del período
+ */
 export async function getFinancialSummary(query = {}) {
     const conexion = DataBase.getInstance();
     const period = getPeriodFromQuery(query);
@@ -920,6 +1109,7 @@ export async function getFinancialSummary(query = {}) {
         fixedCosts: core.totalFixedCosts,
         fixedCostsCommitted: core.totalFixedCostsCommitted,
         variableCosts: core.totalVariableCosts,
+        costosDevengados: core.totalCostosDevengados,
         expenses: core.totalExpenses,
         operatingResult: core.operatingResult,
         emergencyFundDeduction: core.emergencyFundDeduction,
@@ -932,74 +1122,181 @@ export async function getFinancialSummary(query = {}) {
         totalPartnersAvailableAccumulated: accumulatedPartnersAvailable,
         partnersAvailability,
         investments: inversionesPeriodo,
-        fondos
+        fondos,
+        resultadoContable: core.resultadoContable,
+        utilidadContable: core.utilidadContable
     };
 }
 
+// Retiros de un socio específico agrupados por mes (para el cálculo acumulado)
+async function getPartnerMonthlyWithdrawals(conexion, socioId, startDate, endDate) {
+    const retiroSocioColumn = await getRetiroSocioColumn(conexion);
+    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    const where = [`${retiroSocioColumn} = ?`, "fecha_retiro BETWEEN ? AND ?"];
+    const params = [socioId, startDate, endDate];
+    if (retirosFilter.whereClause) {
+        where.push(retirosFilter.whereClause);
+        params.push(...retirosFilter.params);
+    }
+    const rows = await safeQuery(
+        conexion,
+        `SELECT YEAR(fecha_retiro) AS year, MONTH(fecha_retiro) AS month,
+                COALESCE(SUM(monto), 0) AS total
+         FROM retiros_socios
+         WHERE ${where.join(" AND ")}
+         GROUP BY YEAR(fecha_retiro), MONTH(fecha_retiro)`,
+        params,
+        []
+    );
+    return mapMonthlyRows(rows);
+}
+
+// Acumulado histórico del socio: suma de (su share del netProfit - sus retiros) mes a mes
+async function getPartnerCumulativeAvailable(conexion, socioId, porcentaje, targetPeriod, context = {}) {
+    const firstPeriod = await getFirstRelevantPeriod(conexion, targetPeriod, context);
+    const config = context.config || await getFinancialConfigRow(conexion);
+    const fixedCostsData = context.fixedCostsData || await getFixedCostsData(conexion);
+    const firstStartDate = `${firstPeriod.year}-${String(firstPeriod.month).padStart(2, "0")}-01`;
+
+    // Datos de ingresos y costos variables por mes
+    const monthly = await getMonthlyAggregates(conexion, firstStartDate, targetPeriod.endDate, context);
+    // Retiros específicos de este socio por mes
+    const partnerRetiros = await getPartnerMonthlyWithdrawals(conexion, socioId, firstStartDate, targetPeriod.endDate);
+
+    let year = firstPeriod.year;
+    let month = firstPeriod.month;
+    let accumulated = 0;
+    let guard = 0;
+
+    while (
+        (year < targetPeriod.year || (year === targetPeriod.year && month <= targetPeriod.month))
+        && guard < 600
+    ) {
+        const monthKey = `${year}-${month}`;
+        const income = Number(monthly.income.get(monthKey) || 0);
+        const variableCosts = Number(monthly.variable.get(monthKey) || 0);
+        const fixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostOccursInPeriod(cost, year, month - 1))
+            .reduce((sum, cost) => {
+                const amount = Number.parseFloat(cost?.monto);
+                return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+
+        const operatingResult = income - fixedCosts - variableCosts;
+        const baseForDeductions = Math.max(0, operatingResult);
+        const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
+        const reinvestPct = Number(config?.porcentaje_reinversion || 0);
+        const emergencyDeduction = (baseForDeductions * emergencyPct) / 100;
+        const reinvestDeduction = (baseForDeductions * reinvestPct) / 100;
+        const netProfit = operatingResult - emergencyDeduction - reinvestDeduction;
+
+        // Share del socio este mes (nunca negativo)
+        const partnerShare = Math.max(0, (netProfit * porcentaje) / 100);
+        // Retiros del socio este mes
+        const retirosThisMonth = Number(partnerRetiros.get(monthKey) || 0);
+        accumulated = Math.max(0, accumulated + partnerShare - retirosThisMonth);
+
+        month += 1;
+        if (month > 12) { month = 1; year += 1; }
+        guard += 1;
+    }
+
+    return Math.max(0, accumulated);
+}
+
+/**
+ * getPartnerAvailableAmount - Calcula el monto disponible para retiro de un socio.
+ *
+ * Lógica:
+ *   1. Calcula el acumulado histórico del socio: suma mes a mes de
+ *      (su share del netProfit) - (sus retiros), desde el primer período con datos.
+ *   2. Calcula el retiro ya realizado en el mes del período solicitado.
+ *   3. Disponible = min(acumulado, LIMITE_RETIRO_MENSUAL - retiradoMes)
+ *
+ * El límite mensual evita que un socio retire todo su acumulado de una sola vez.
+ *
+ * @param {number|string} socioId - ID del socio
+ * @param {object} query - Query params: mes (1-12), año (ej: 2025)
+ * @returns {object|null} { socio, period, acumulado, retiradoMes, limiteMensual, margenMensual, disponible }
+ *                        null si el socio no existe o está inactivo.
+ */
 export async function getPartnerAvailableAmount(socioId, query = {}) {
     const conexion = DataBase.getInstance();
-    const summary = await getFinancialSummary(query);
+    const period = getPeriodFromQuery(query);
 
     const sociosColumns = await getTableColumns(conexion, "socios");
     const hasActivoSocios = sociosColumns.has("activo");
     const socioIdColumn = await getSocioIdColumn(conexion);
     const retiroSocioColumn = await getRetiroSocioColumn(conexion);
+
     const socioQuery = hasActivoSocios
         ? `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
-           FROM socios
-           WHERE ${socioIdColumn} = ? AND activo = 1`
+           FROM socios WHERE ${socioIdColumn} = ? AND activo = 1`
         : `SELECT ${socioIdColumn} AS id, nombre, porcentaje_participacion
-           FROM socios
-           WHERE ${socioIdColumn} = ? AND nombre NOT LIKE ?`;
+           FROM socios WHERE ${socioIdColumn} = ? AND nombre NOT LIKE ?`;
     const socioParams = hasActivoSocios
         ? [socioId]
         : [socioId, `${SOFT_DELETE_SOCIO_PREFIX}%`];
 
-    const [socio] = await safeQuery(
-        conexion,
-        socioQuery,
-        socioParams,
-        []
-    );
+    const [socio] = await safeQuery(conexion, socioQuery, socioParams, []);
+    if (!socio) return null;
 
-    if (!socio) {
-        return null;
-    }
+    const porcentaje = Number(socio.porcentaje_participacion || 0);
 
-    const assigned = Math.max(0, (summary.netProfit * Number(socio.porcentaje_participacion || 0)) / 100);
+    // Contexto compartido para evitar re-queries
+    const config = await getFinancialConfigRow(conexion);
+    const fixedCostsData = await getFixedCostsData(conexion);
     const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    const variableFilter = await getCostosVariablesNotDeletedFilter(conexion);
+    const context = { config, fixedCostsData, retirosFilter, variableFilter };
+
+    // Acumulado histórico: total asignado al socio - total retirado (todo el tiempo)
+    const acumulado = await getPartnerCumulativeAvailable(conexion, socioId, porcentaje, period, context);
+
+    // Retiros del socio en el mes actual (para calcular margen mensual restante)
     const retirosWhere = [`${retiroSocioColumn} = ?`, "fecha_retiro BETWEEN ? AND ?"];
-    const retirosParams = [socioId, summary.period.startDate, summary.period.endDate];
+    const retirosParams = [socioId, period.startDate, period.endDate];
     if (retirosFilter.whereClause) {
         retirosWhere.push(retirosFilter.whereClause);
         retirosParams.push(...retirosFilter.params);
     }
-
-    const [retiros] = await safeQuery(
+    const [retirosMes] = await safeQuery(
         conexion,
-        `SELECT COALESCE(SUM(monto), 0) AS total
-         FROM retiros_socios
-         WHERE ${retirosWhere.join(" AND ")}`,
+        `SELECT COALESCE(SUM(monto), 0) AS total FROM retiros_socios WHERE ${retirosWhere.join(" AND ")}`,
         retirosParams,
         [{}]
     );
+    const retiradoMes = Number(retirosMes?.total || 0);
 
-    const retirado = Number(retiros?.total || 0);
-    const disponible = Math.max(0, assigned - retirado);
+    // Disponible = mínimo entre (límite mensual - ya retirado este mes) y el acumulado histórico
+    const margenMensual = Math.max(0, LIMITE_RETIRO_MENSUAL - retiradoMes);
+    const disponible = Math.max(0, Math.min(margenMensual, acumulado));
 
     return {
         socio: {
             id: Number(socio.id),
             nombre: socio.nombre,
-            porcentaje_participacion: Number(socio.porcentaje_participacion || 0)
+            porcentaje_participacion: porcentaje
         },
-        period: summary.period,
-        asignado: assigned,
-        retirado,
+        period,
+        acumulado,
+        retiradoMes,
+        limiteMensual: LIMITE_RETIRO_MENSUAL,
+        margenMensual,
         disponible
     };
 }
 
+/**
+ * getUpcomingDueItems - Lista los costos con vencimiento próximo dentro de una ventana de días.
+ *
+ * Para costos fijos: calcula la próxima fecha de vencimiento según su frecuencia y día de pago.
+ * Para costos variables: usa el campo `fecha_vencimiento` si existe.
+ * Solo retorna ítems cuya fecha de vencimiento sea <= hoy + windowDays.
+ *
+ * @param {object} query - Query params: dias|days (número de días, default 7, máx 90)
+ * @returns {object} { from, to, dias, total, items: [{ id, tipo, titulo, fecha_vencimiento, dias_restantes, monto }] }
+ */
 export async function getUpcomingDueItems(query = {}) {
     const conexion = DataBase.getInstance();
     const dias = Number(query.dias || query.days || 7);
@@ -1118,4 +1415,123 @@ export async function getUpcomingDueItems(query = {}) {
         total: allItems.length,
         items: allItems
     };
+}
+
+/**
+ * getFlujoCajaAnual - Genera el flujo de caja mes a mes para un año completo.
+ *
+ * Por cada mes calcula:
+ *   - Ingresos: pagos recibidos de proyectos activos
+ *   - Costos fijos efectivos: los que realmente se pagan ese mes (vencimiento real)
+ *   - Costos fijos devengados: provisión mensual proporcional de TODOS los costos activos
+ *     (ej: hosting anual $300k → $25k/mes aunque solo se pague en enero)
+ *   - Costos variables: gastos del mes
+ *   - Fondo de emergencia y reinversión: porcentaje del resultado positivo
+ *   - Flujo neto: ingresos - egresos - retiros
+ *   - Utilidad neta: ingresos - egresos - fondos
+ *
+ * @param {object} query - Query params: año|anio|year (ej: 2025, default año actual)
+ * @returns {object} { año, meses: [...], totales: { ingresos, egresos, retiros, flujoNeto, ... } }
+ */
+export async function getFlujoCajaAnual(query = {}) {
+    const conexion = DataBase.getInstance();
+    const year = Number(query.año ?? query.anio ?? query.year ?? new Date().getFullYear());
+    const safeYear = Number.isFinite(year) ? year : new Date().getFullYear();
+
+    const config = await getFinancialConfigRow(conexion);
+    const fixedCostsData = await getFixedCostsData(conexion);
+    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
+    // Nota: variableFilter no se pasa aquí porque getVariableCostsTotalInRange lo resuelve internamente
+    const pagosFilter = await getProyectosNotDeletedSubquery(conexion);
+
+    const meses = [];
+    for (let mes = 1; mes <= 12; mes++) {
+        const period = buildPeriod(safeYear, mes);
+
+        const mesPagosWhere = ["fecha_pago BETWEEN ? AND ?"];
+        const mesPagosParams = [period.startDate, period.endDate];
+        if (pagosFilter.whereClause) {
+            mesPagosWhere.push(pagosFilter.whereClause);
+            mesPagosParams.push(...pagosFilter.params);
+        }
+        const [ingresos] = await safeQuery(
+            conexion,
+            `SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos WHERE ${mesPagosWhere.join(" AND ")}`,
+            mesPagosParams,
+            [{}]
+        );
+
+        const totalVariableCosts = await getVariableCostsTotalInRange(conexion, period.startDate, period.endDate);
+
+        const retirosWhere = ["fecha_retiro BETWEEN ? AND ?"];
+        const retirosParams = [period.startDate, period.endDate];
+        if (retirosFilter.whereClause) {
+            retirosWhere.push(retirosFilter.whereClause);
+            retirosParams.push(...retirosFilter.params);
+        }
+        const [retirosMes] = await safeQuery(
+            conexion,
+            `SELECT COALESCE(SUM(monto), 0) AS total FROM retiros_socios WHERE ${retirosWhere.join(" AND ")}`,
+            retirosParams,
+            [{}]
+        );
+
+        const totalIncome = Number(ingresos?.total || 0);
+
+        // Costos fijos: solo los que realmente se pagan en este mes (vencimiento real)
+        const costosFijosEfectivos = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostOccursInPeriod(cost, safeYear, mes - 1))
+            .reduce((sum, cost) => {
+                const amount = Number.parseFloat(cost?.monto);
+                return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+
+        // Devengado: provisión mensual proporcional de todos los costos fijos activos
+        const costosFijosDevengados = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostIsActiveInPeriod(cost, safeYear, mes - 1))
+            .reduce((sum, cost) => {
+                const amount = getMonthlyAccrualAmount(cost);
+                return sum + (Number.isFinite(amount) ? amount : 0);
+            }, 0);
+
+        const egresos = costosFijosEfectivos + totalVariableCosts;
+        const retirosTotal = Number(retirosMes?.total || 0);
+        const flujoNeto = totalIncome - egresos - retirosTotal;
+
+        const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
+        const reinvestPct = Number(config?.porcentaje_reinversion || 0);
+        const base = Math.max(0, totalIncome - egresos);
+        const fondoEmergencia = (base * emergencyPct) / 100;
+        const reinversion = (base * reinvestPct) / 100;
+        const utilidadNeta = (totalIncome - egresos) - fondoEmergencia - reinversion;
+
+        meses.push({
+            mes,
+            nombre: ["Enero","Febrero","Marzo","Abril","Mayo","Junio",
+                     "Julio","Agosto","Septiembre","Octubre","Noviembre","Diciembre"][mes - 1],
+            periodo: period.startDate.slice(0, 7),
+            ingresos: totalIncome,
+            costosFijosEfectivos,
+            costosFijosDevengados,
+            costosVariables: totalVariableCosts,
+            egresos,
+            retiros: retirosTotal,
+            fondoEmergencia,
+            reinversion,
+            flujoNeto,
+            utilidadNeta
+        });
+    }
+
+    const totales = meses.reduce((acc, m) => ({
+        ingresos: acc.ingresos + m.ingresos,
+        egresos: acc.egresos + m.egresos,
+        retiros: acc.retiros + m.retiros,
+        flujoNeto: acc.flujoNeto + m.flujoNeto,
+        utilidadNeta: acc.utilidadNeta + m.utilidadNeta,
+        fondoEmergencia: acc.fondoEmergencia + m.fondoEmergencia,
+        costosFijosDevengados: acc.costosFijosDevengados + m.costosFijosDevengados
+    }), { ingresos: 0, egresos: 0, retiros: 0, flujoNeto: 0, utilidadNeta: 0, fondoEmergencia: 0, costosFijosDevengados: 0 });
+
+    return { año: safeYear, meses, totales };
 }

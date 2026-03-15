@@ -1,27 +1,45 @@
 import Socios from "../model/Socios.js";
 import { parsePagination } from "../utils/pagination.js";
 
+/**
+ * SociosController
+ * Gestiona los socios del negocio: sus datos personales, porcentajes de participación
+ * y operaciones CRUD completas.
+ * El porcentaje de cada socio determina su share de las utilidades netas del período.
+ * Modelo: Socios.js
+ */
 export default class SociosController {
     constructor() {}
 
-    // OBTENER TODOS LOS SOCIOS
+    /**
+     * obtenerSocios - Lista todos los socios activos del sistema.
+     * Ruta: GET /api/socios
+     * Query: limit, offset (paginación opcional, por defecto 500 registros)
+     * Headers respuesta: x-pagination-limit, x-pagination-offset
+     */
     static async obtenerSocios(req, res) {
         try {
             const socio = new Socios();
+            // Parsea parámetros de paginación desde query string (?limit=50&offset=0)
             const pagination = parsePagination(req.query, { defaultLimit: 500, maxLimit: 2000 });
             const dataSocios = await socio.selectAllSocios(pagination);
+            // Expone la paginación aplicada en headers para que el frontend pueda navegarla
             if (pagination) {
                 res.set("x-pagination-limit", String(pagination.limit));
                 res.set("x-pagination-offset", String(pagination.offset));
             }
             return res.json(dataSocios);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener socios" });
+            console.error("[SociosController.obtenerSocios]", error);
+            return res.status(500).json({ message: "Error al obtener socios" });
         }
     }
 
-    // OBTENER UN SOCIO POR ID
+    /**
+     * obtenerSocioPorId - Obtiene un socio específico por su ID.
+     * Ruta: GET /api/socios/:id
+     * Params: id (ID del socio)
+     */
     static async obtenerSocioPorId(req, res) {
         try {
             const { id } = req.params;
@@ -32,16 +50,27 @@ export default class SociosController {
             const dataSocio = await socio.selectSocioById(id);
             return res.json(dataSocio);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener socio" });
+            console.error("[SociosController.obtenerSocioPorId]", error);
+            return res.status(500).json({ message: "Error al obtener socio" });
         }
     }
 
-    // CREAR NUEVO SOCIO
+    /**
+     * crearSocio - Registra un nuevo socio con su nombre, porcentaje de participación
+     * y datos de contacto opcionales.
+     * Ruta: POST /api/socios
+     * Body: {
+     *   nombre (string, requerido),
+     *   porcentaje_participacion (number, requerido),
+     *   email (string, opcional),
+     *   telefono (string, opcional)
+     * }
+     */
     static async crearSocio(req, res) {
         try {
             const { nombre, porcentaje_participacion, email, telefono } = req.body;
 
+            // Validar campos mínimos obligatorios antes de ir a la BD
             if (!nombre || porcentaje_participacion === undefined) {
                 return res.status(404).json({ message: "Faltan datos requeridos" });
             }
@@ -50,12 +79,22 @@ export default class SociosController {
             const resultado = await socio.insertSocio(nombre, porcentaje_participacion, email, telefono);
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al crear socio" });
+            console.error("[SociosController.crearSocio]", error);
+            return res.status(500).json({ message: "Error al crear socio" });
         }
     }
 
-    // ACTUALIZAR SOCIO
+    /**
+     * actualizarSocio - Actualiza todos los campos de un socio existente.
+     * Ruta: PUT /api/socios/:id
+     * Params: id
+     * Body: {
+     *   nombre (string, requerido),
+     *   porcentaje_participacion (number, requerido),
+     *   email (string, opcional),
+     *   telefono (string, opcional)
+     * }
+     */
     static async actualizarSocio(req, res) {
         try {
             const { id } = req.params;
@@ -69,12 +108,17 @@ export default class SociosController {
             const resultado = await socio.updateSocio(id, nombre, porcentaje_participacion, email, telefono);
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al actualizar socio" });
+            console.error("[SociosController.actualizarSocio]", error);
+            return res.status(500).json({ message: "Error al actualizar socio" });
         }
     }
 
-    // ELIMINAR SOCIO
+    /**
+     * eliminarSocio - Realiza soft-delete de un socio (lo marca como eliminado sin borrarlo físicamente).
+     * affectedRows=0 indica que el registro no existe o ya estaba eliminado.
+     * Ruta: DELETE /api/socios/:id
+     * Params: id
+     */
     static async eliminarSocio(req, res) {
         try {
             const { id } = req.params;
@@ -84,21 +128,29 @@ export default class SociosController {
 
             const socio = new Socios();
             const resultado = await socio.deleteSocio(id);
+            // affectedRows=0 indica que el registro no existe o ya fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Socio no encontrado o ya eliminado" });
             }
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al eliminar socio" });
+            console.error("[SociosController.eliminarSocio]", error);
+            return res.status(500).json({ message: "Error al eliminar socio" });
         }
     }
 
-    // ACTUALIZAR PORCENTAJE
+    /**
+     * actualizarPorcentaje - Actualiza únicamente el porcentaje de participación de un socio.
+     * Acepta 'porcentaje_participacion' o 'percentage' para compatibilidad con el frontend.
+     * Ruta: PATCH /api/socios/:id/porcentaje
+     * Params: id
+     * Body: { porcentaje_participacion | percentage (number, requerido) }
+     */
     static async actualizarPorcentaje(req, res) {
         try {
             const { id } = req.params;
             const { porcentaje_participacion, percentage } = req.body;
+            // Acepta cualquiera de los dos nombres de campo (prioridad: porcentaje_participacion)
             const porcentajeFinal = porcentaje_participacion !== undefined ? porcentaje_participacion : percentage;
 
             if (!id || porcentajeFinal === undefined) {
@@ -109,8 +161,8 @@ export default class SociosController {
             const resultado = await socio.updatePorcentaje(id, porcentajeFinal);
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al actualizar porcentaje" });
+            console.error("[SociosController.actualizarPorcentaje]", error);
+            return res.status(500).json({ message: "Error al actualizar porcentaje" });
         }
     }
 }

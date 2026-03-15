@@ -1,29 +1,58 @@
 import RetirosSocios from "../model/RetirosSocios.js";
+import Socios from "../model/Socios.js";
 import { getPartnerAvailableAmount } from "../services/financeService.js";
 import { parsePagination } from "../utils/pagination.js";
 
+/**
+ * RetirosSociosController
+ * Gestiona los retiros de utilidades de los socios del negocio.
+ * Antes de registrar un retiro, valida que el socio exista y que el monto
+ * no exceda el disponible acumulado ni el límite mensual de retiro.
+ * Modelo: RetirosSocios.js, Socios.js
+ * Servicio: financeService.js (para cálculo de disponible por socio)
+ */
 export default class RetirosSociosController {
     constructor() {}
 
-    // DISPONIBLE DE UN SOCIO EN EL PERIODO
+    /**
+     * obtenerDisponible - Calcula y devuelve el monto disponible para retiro de un socio.
+     * Considera: acumulado histórico, retiros ya realizados en el mes y el límite mensual.
+     * Ruta: GET /api/socios/:id/disponible
+     * Params: id (ID del socio)
+     * Query: mes, año (opcional — default período actual)
+     */
     static async obtenerDisponible(req, res) {
         try {
             const { id } = req.params;
             if (!id) return res.status(400).json({ message: "ID de socio requerido" });
 
+            // Verificar que el socio exista y esté activo antes de calcular
+            const socioModel = new Socios();
+            const socioCheck = await socioModel.selectSocioById(id);
+            if (!socioCheck) {
+                return res.status(404).json({ message: "Socio no encontrado o inactivo" });
+            }
+
+            // Calcular el disponible real del socio para el período indicado en la query
             const disponible = await getPartnerAvailableAmount(id, req.query || {});
             if (!disponible) {
-                return res.status(404).json({ message: "Socio no encontrado" });
+                return res.status(500).json({ message: "Error al calcular disponible del socio" });
             }
 
             return res.json(disponible);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener disponible del socio" });
+            console.error("[RetirosSociosController.obtenerDisponible]", error);
+            return res.status(500).json({ message: "Error al obtener disponible del socio" });
         }
     }
 
-    // OBTENER RETIROS DE UN SOCIO
+    /**
+     * obtenerRetiros - Lista todos los retiros registrados de un socio específico.
+     * Ruta: GET /api/socios/:id/retiros
+     * Params: id (ID del socio)
+     * Query: limit, offset (paginación opcional)
+     * Headers respuesta: x-pagination-limit, x-pagination-offset
+     */
     static async obtenerRetiros(req, res) {
         try {
             const { id } = req.params;
@@ -38,43 +67,91 @@ export default class RetirosSociosController {
             }
             return res.json(dataRetiros);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener retiros" });
+            console.error("[RetirosSociosController.obtenerRetiros]", error);
+            return res.status(500).json({ message: "Error al obtener retiros" });
         }
     }
 
-    // REGISTRAR RETIRO
+    /**
+     * registrarRetiro - Registra un retiro de utilidades para un socio.
+     * Valida que:
+     *   1. El socio exista y esté activo.
+     *   2. El monto no supere el acumulado histórico del socio.
+     *   3. El monto no supere el margen mensual restante (límite de retiro por mes).
+     * Acepta nombres de campo alternativos para compatibilidad con el frontend.
+     * Ruta: POST /api/socios/:id/retiros
+     * Params: id (ID del socio)
+     * Body: {
+     *   monto | amount (number > 0, requerido),
+     *   fecha_retiro | date (YYYY-MM-DD, requerido),
+     *   descripcion | description (string, opcional — default "Retiro de utilidades"),
+     *   numero_comprobante | receipt (string, opcional),
+     *   observaciones (string, opcional)
+     * }
+     */
     static async registrarRetiro(req, res) {
         try {
             const { id } = req.params;
             const { monto, amount, fecha_retiro, date, descripcion, description, numero_comprobante, receipt, observaciones } = req.body;
 
+            // Normalizar campos con nombres alternativos
             const montoFinal = Number(monto ?? amount);
             const fechaFinal = fecha_retiro || date;
 
+            // Validar que el monto sea un número positivo y la fecha esté presente
             if (!id || !Number.isFinite(montoFinal) || montoFinal <= 0 || !fechaFinal) {
                 return res.status(400).json({ message: "Faltan datos requeridos (socio_id, monto, fecha)" });
             }
 
+            // Verificar que el socio exista y esté activo
+            const socioModel = new Socios();
+            const socioCheck = await socioModel.selectSocioById(id);
+            if (!socioCheck) {
+                return res.status(404).json({ message: "Socio no encontrado o inactivo" });
+            }
+
+            // Calcular el período del retiro desde la fecha indicada (para evaluar el límite mensual)
             const d = new Date(fechaFinal);
             const queryPeriodo = Number.isNaN(d.getTime())
                 ? {}
                 : { month: d.getMonth(), year: d.getFullYear() };
 
+            // Obtener el disponible real del socio para el período del retiro
             const disponibleData = await getPartnerAvailableAmount(id, queryPeriodo);
             if (!disponibleData) {
-                return res.status(404).json({ message: "Socio no encontrado" });
+                return res.status(500).json({ message: "Error al calcular disponible del socio" });
             }
 
-            if (montoFinal > Number(disponibleData.disponible || 0)) {
+            const disponible = Number(disponibleData.disponible || 0);
+
+            // Rechazar si el monto solicitado supera el disponible (acumulado o límite mensual)
+            if (montoFinal > disponible) {
+                const acumulado = Number(disponibleData.acumulado || 0);
+                const margenMensual = Number(disponibleData.margenMensual || 0);
+                const limiteMensual = Number(disponibleData.limiteMensual || 3_000_000);
+                const retiradoMes = Number(disponibleData.retiradoMes || 0);
+
+                // Armar mensaje descriptivo según cuál restricción aplica
+                let mensaje = "Monto excede el disponible del socio";
+                if (acumulado < montoFinal) {
+                    mensaje = `El socio no tiene suficiente acumulado. Disponible acumulado: $${acumulado.toLocaleString('es-CL')}`;
+                } else if (margenMensual < montoFinal) {
+                    mensaje = `Límite mensual de retiro alcanzado ($${limiteMensual.toLocaleString('es-CL')}/mes). Ya retirado este mes: $${retiradoMes.toLocaleString('es-CL')}`;
+                }
+
                 return res.status(400).json({
-                    message: "Monto excede disponible del socio en el período",
-                    disponible: Number(disponibleData.disponible || 0),
+                    message: mensaje,
+                    disponible,
+                    acumulado,
+                    retiradoMes,
+                    limiteMensual,
+                    margenMensual,
                     solicitado: montoFinal,
                     periodo: disponibleData.period
                 });
             }
 
+            // Registrar el retiro en la base de datos
             const retiros = new RetirosSocios();
             const resultado = await retiros.insertRetiro(
                 id,
@@ -87,15 +164,21 @@ export default class RetirosSociosController {
             return res.json({
                 ok: true,
                 resultado,
+                // Saldo estimado restante después del retiro (informativo, no recalcula en tiempo real)
                 disponible_actualizado: Math.max(0, Number(disponibleData.disponible || 0) - montoFinal)
             });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al registrar retiro" });
+            console.error("[RetirosSociosController.registrarRetiro]", error);
+            return res.status(500).json({ message: "Error al registrar retiro" });
         }
     }
 
-    // ELIMINAR RETIRO
+    /**
+     * eliminarRetiro - Realiza soft-delete de un retiro registrado.
+     * affectedRows=0 indica que el retiro no existe o ya fue eliminado.
+     * Ruta: DELETE /api/socios/:id/retiros/:rid
+     * Params: rid (ID del retiro)
+     */
     static async eliminarRetiro(req, res) {
         try {
             const { rid } = req.params;
@@ -103,13 +186,14 @@ export default class RetirosSociosController {
 
             const retiros = new RetirosSocios();
             const resultado = await retiros.deleteRetiro(rid);
+            // affectedRows=0 indica que el registro no existe o ya fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Retiro no encontrado o ya eliminado" });
             }
             return res.json({ ok: true, success: true, softDelete: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al eliminar retiro" });
+            console.error("[RetirosSociosController.eliminarRetiro]", error);
+            return res.status(500).json({ message: "Error al eliminar retiro" });
         }
     }
 }

@@ -1,10 +1,23 @@
 import Proyectos from "../model/Proyectos.js";
 import { parsePagination } from "../utils/pagination.js";
 
+/**
+ * ProyectosController
+ * Gestiona los proyectos del negocio: creación, seguimiento de estado,
+ * registro de pagos recibidos y eliminación.
+ * El código interno de cada proyecto se genera automáticamente si no se provee,
+ * basándose en el tipo de proyecto y el último correlativo registrado.
+ * Modelo: Proyectos.js
+ */
 export default class ProyectosController {
     constructor() {}
 
-    // OBTENER TODOS LOS PROYECTOS
+    /**
+     * obtenerProyectos - Lista todos los proyectos activos.
+     * Ruta: GET /api/proyectos
+     * Query: limit, offset (paginación opcional, por defecto 500 registros)
+     * Headers respuesta: x-pagination-limit, x-pagination-offset
+     */
     static async obtenerProyectos(req, res) {
         try {
             const proyecto = new Proyectos();
@@ -16,12 +29,16 @@ export default class ProyectosController {
             }
             return res.json(dataProyectos);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener proyectos" });
+            console.error("[ProyectosController.obtenerProyectos]", error);
+            return res.status(500).json({ message: "Error al obtener proyectos" });
         }
     }
 
-    // OBTENER UN PROYECTO POR ID
+    /**
+     * obtenerProyectoPorId - Obtiene un proyecto específico por su ID.
+     * Ruta: GET /api/proyectos/:id
+     * Params: id (ID del proyecto)
+     */
     static async obtenerProyectoPorId(req, res) {
         try {
             const { id } = req.params;
@@ -35,12 +52,29 @@ export default class ProyectosController {
             }
             return res.json(dataProyecto);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener proyecto" });
+            console.error("[ProyectosController.obtenerProyectoPorId]", error);
+            return res.status(500).json({ message: "Error al obtener proyecto" });
         }
     }
 
-    // CREAR NUEVO PROYECTO (genera codigo_interno automáticamente)
+    /**
+     * crearProyecto - Crea un nuevo proyecto con todos sus datos.
+     * Si no se provee codigo_interno (o es inválido), el modelo genera el siguiente
+     * correlativo automáticamente según el tipo de proyecto.
+     * Ruta: POST /api/proyectos
+     * Body: {
+     *   nombre (string, requerido),
+     *   tipo_proyecto_id (number, requerido),
+     *   estado_proyecto_id (number, requerido),
+     *   nombre_cliente (string, requerido),
+     *   monto_acordado (number, requerido),
+     *   codigo_interno (string, opcional — se genera si se omite),
+     *   rut_cliente, email_cliente, telefono_cliente, profesion_cliente (opcionales),
+     *   fecha_creacion (YYYY-MM-DD, opcional — default hoy),
+     *   fecha_entrega (YYYY-MM-DD, opcional),
+     *   observaciones (string, opcional)
+     * }
+     */
     static async crearProyecto(req, res) {
         try {
             const {
@@ -59,13 +93,14 @@ export default class ProyectosController {
                 observaciones
             } = req.body;
 
+            // Validar campos mínimos obligatorios
             if (!nombre || !tipo_proyecto_id || !estado_proyecto_id || !nombre_cliente || !monto_acordado) {
                 return res.status(400).json({ message: "Faltan datos requeridos" });
             }
 
             const proyecto = new Proyectos();
 
-            // Generar codigo_interno automáticamente si no viene o es inválido
+            // Generar codigo_interno automáticamente si no viene o excede la longitud máxima (10 chars)
             let codigoFinal = codigo_interno;
             if (!codigoFinal || codigoFinal.length > 10) {
                 codigoFinal = await proyecto.getNextCodigoInterno(tipo_proyecto_id);
@@ -88,12 +123,18 @@ export default class ProyectosController {
             );
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al crear proyecto" });
+            console.error("[ProyectosController.crearProyecto]", error);
+            return res.status(500).json({ message: "Error al crear proyecto" });
         }
     }
 
-    // ACTUALIZAR PROYECTO
+    /**
+     * actualizarProyecto - Actualiza los datos completos de un proyecto.
+     * El código interno no se puede cambiar una vez creado.
+     * Ruta: PUT /api/proyectos/:id
+     * Params: id
+     * Body: { nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente (requeridos), resto opcionales }
+     */
     static async actualizarProyecto(req, res) {
         try {
             const { id } = req.params;
@@ -130,17 +171,24 @@ export default class ProyectosController {
                 fecha_entrega,
                 observaciones
             );
+            // affectedRows=0 indica que el proyecto no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Proyecto no encontrado o eliminado" });
             }
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al actualizar proyecto" });
+            console.error("[ProyectosController.actualizarProyecto]", error);
+            return res.status(500).json({ message: "Error al actualizar proyecto" });
         }
     }
 
-    // CAMBIAR ESTADO DEL PROYECTO
+    /**
+     * cambiarEstadoProyecto - Actualiza únicamente el estado de un proyecto.
+     * Útil para avanzar el ciclo de vida sin tocar los otros campos.
+     * Ruta: PATCH /api/proyectos/:id/estado
+     * Params: id
+     * Body: { estado_proyecto_id (number, requerido) }
+     */
     static async cambiarEstadoProyecto(req, res) {
         try {
             const { id } = req.params;
@@ -157,12 +205,17 @@ export default class ProyectosController {
             }
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al cambiar estado" });
+            console.error("[ProyectosController.cambiarEstadoProyecto]", error);
+            return res.status(500).json({ message: "Error al cambiar estado" });
         }
     }
 
-    // ELIMINAR PROYECTO
+    /**
+     * eliminarProyecto - Realiza soft-delete de un proyecto.
+     * affectedRows=0 indica que ya estaba eliminado o no existe.
+     * Ruta: DELETE /api/proyectos/:id
+     * Params: id
+     */
     static async eliminarProyecto(req, res) {
         try {
             const { id } = req.params;
@@ -177,12 +230,18 @@ export default class ProyectosController {
             }
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al eliminar proyecto" });
+            console.error("[ProyectosController.eliminarProyecto]", error);
+            return res.status(500).json({ message: "Error al eliminar proyecto" });
         }
     }
 
-    // OBTENER PAGOS DE UN PROYECTO
+    /**
+     * obtenerPagosProyecto - Lista todos los pagos registrados para un proyecto.
+     * Los pagos representan los abonos que hace el cliente sobre el monto acordado.
+     * Ruta: GET /api/proyectos/:id/pagos
+     * Params: id (ID del proyecto)
+     * Query: limit, offset (paginación opcional)
+     */
     static async obtenerPagosProyecto(req, res) {
         try {
             const { id } = req.params;
@@ -199,17 +258,31 @@ export default class ProyectosController {
             }
             return res.json(dataPagos);
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al obtener pagos" });
+            console.error("[ProyectosController.obtenerPagosProyecto]", error);
+            return res.status(500).json({ message: "Error al obtener pagos" });
         }
     }
 
-    // REGISTRAR PAGO DE PROYECTO
+    /**
+     * registrarPagoProyecto - Registra un pago recibido de un cliente para un proyecto.
+     * El monto de los pagos alimenta los ingresos del resumen financiero del período.
+     * Acepta nombres de campo alternativos para compatibilidad con el frontend.
+     * Ruta: POST /api/proyectos/:id/pagos
+     * Params: id (ID del proyecto)
+     * Body: {
+     *   concepto | description (string, requerido),
+     *   monto | amount (number, requerido),
+     *   fecha_pago | date (YYYY-MM-DD, requerido),
+     *   numero_comprobante | receipt (string, opcional),
+     *   notas (string, opcional)
+     * }
+     */
     static async registrarPagoProyecto(req, res) {
         try {
             const { id } = req.params;
             const { concepto, description, monto, amount, fecha_pago, date, numero_comprobante, receipt, notas } = req.body;
 
+            // Normalizar campos que aceptan dos nombres (compatibilidad frontend)
             const conceptoFinal = concepto || description;
             const montoFinal = monto || amount;
             const fechaFinal = fecha_pago || date;
@@ -223,8 +296,8 @@ export default class ProyectosController {
             const resultado = await proyecto.insertProyectoPago(id, conceptoFinal, montoFinal, fechaFinal, comprobanteFinal, notas);
             return res.json({ ok: true, resultado });
         } catch (error) {
-            console.error(error);
-            res.status(500).json({ message: "Error al registrar pago" });
+            console.error("[ProyectosController.registrarPagoProyecto]", error);
+            return res.status(500).json({ message: "Error al registrar pago" });
         }
     }
 }
