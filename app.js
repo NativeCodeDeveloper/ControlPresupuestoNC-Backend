@@ -45,7 +45,7 @@ const app = express();
 app.use(helmet());
 app.use(rateLimit({
     windowMs: 60_000, // 1 minute
-    max: 100 // Limit each IP to 100 requests per windowMs
+    max: 500 // Limit each IP to 500 requests per windowMs
 }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(express.json({ limit: "1mb" }));
@@ -188,6 +188,22 @@ app.get('/recordatorios/ejecutar', async (req, res) => {
     } catch (error) {
         return res.status(500).json({ ok: false, error: error.message });
     }
+});
+
+// Manejador global de errores Express (debe ir después de todas las rutas)
+// Captura cualquier error que llegue con next(error) o lanzado en middleware
+app.use((err, req, res, _next) => {
+    console.error('[Express Error Handler]', err);
+    if (res.headersSent) return;
+    res.status(err.status || 500).json({ message: err.message || 'Error interno del servidor' });
+});
+
+// Capturar errores no manejados para evitar que el proceso caiga silenciosamente
+process.on('uncaughtException', (error) => {
+    console.error('[FATAL] uncaughtException - el servidor seguirá corriendo:', error);
+});
+process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] unhandledRejection - el servidor seguirá corriendo:', reason);
 });
 
 const PORT = process.env.PORT || 3000;
