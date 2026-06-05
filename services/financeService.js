@@ -34,8 +34,6 @@ const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 // Caché en memoria de columnas por tabla para evitar repetir consultas a information_schema
 const tableColumnsCache = new Map();
 
-// Límite máximo de retiro por socio por mes calendario (en pesos chilenos)
-const LIMITE_RETIRO_MENSUAL = 3_000_000;
 
 /**
  * normalizeMonth - Convierte un valor crudo de mes a número 1-12.
@@ -181,12 +179,24 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
     const paymentDay = Number(cost?.fecha_pago || start.getDate());
     const stepMonths = Math.max(1, Number(getFrequencyStepMonths(cost?.frecuencia) || 1));
 
+    let due;
+
+    // Si existe fecha_ultimo_pago, el próximo vencimiento es exactamente un ciclo después.
+    // Esto garantiza que "Registrar Pago" avance el recordatorio sin iterar desde el inicio.
+    const ultimoPago = normalizeDate(cost?.fecha_ultimo_pago);
+    if (ultimoPago) {
+        const moved = addMonths(ultimoPago.getFullYear(), ultimoPago.getMonth(), stepMonths);
+        due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+        if (end && due > end) return null;
+        return due;
+    }
+
+    // Sin fecha_ultimo_pago: calcular iterando desde fecha_inicio (lógica original).
     // Regla de negocio:
     // El primer vencimiento puede ocurrir en el mismo mes de inicio para TODA frecuencia.
     // Si el día de pago >= día de inicio → primer vencimiento en el mes de inicio.
     // Si el día de pago < día de inicio → primer vencimiento en el siguiente ciclo.
     const firstDue = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
-    let due;
     if (firstDue >= start) {
         due = firstDue;
     } else {
@@ -1268,9 +1278,8 @@ export async function getPartnerAvailableAmount(socioId, query = {}) {
     );
     const retiradoMes = Number(retirosMes?.total || 0);
 
-    // Disponible = mínimo entre (límite mensual - ya retirado este mes) y el acumulado histórico
-    const margenMensual = Math.max(0, LIMITE_RETIRO_MENSUAL - retiradoMes);
-    const disponible = Math.max(0, Math.min(margenMensual, acumulado));
+    // Disponible = acumulado histórico (sin tope mensual — libre elección del socio)
+    const disponible = Math.max(0, acumulado);
 
     return {
         socio: {
@@ -1281,8 +1290,6 @@ export async function getPartnerAvailableAmount(socioId, query = {}) {
         period,
         acumulado,
         retiradoMes,
-        limiteMensual: LIMITE_RETIRO_MENSUAL,
-        margenMensual,
         disponible
     };
 }

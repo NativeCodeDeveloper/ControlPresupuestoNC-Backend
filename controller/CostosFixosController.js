@@ -193,6 +193,35 @@ export default class CostosFixosController {
     }
 
     /**
+     * registrarPago - Marca un costo fijo como pagado actualizando fecha_ultimo_pago.
+     * El backend recalcula automáticamente el próximo vencimiento a partir de esta fecha.
+     * Ruta: PATCH /api/costos-fijos/:id/pagar
+     * Params: id
+     * Body: { fecha_pago (YYYY-MM-DD, opcional — default hoy) }
+     */
+    static async registrarPago(req, res) {
+        try {
+            const { id } = req.params;
+            if (!id) return res.status(400).json({ message: "ID requerido" });
+
+            const fechaPago = req.body?.fecha_pago || new Date().toISOString().split("T")[0];
+
+            const costo = new CostosFijos();
+            const resultado = await costo.registrarPago(id, fechaPago);
+            if (!resultado || Number(resultado.affectedRows || 0) === 0) {
+                return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
+            }
+
+            // Devolver el registro actualizado para que el frontend actualice el estado sin refetch completo
+            const actualizado = await costo.selectCostoFijoById(id);
+            return res.json({ ok: true, fecha_ultimo_pago: fechaPago, costo: actualizado });
+        } catch (error) {
+            console.error("[CostosFixosController.registrarPago]", error);
+            return res.status(500).json({ message: error.message || "Error al registrar pago" });
+        }
+    }
+
+    /**
      * eliminarCostoFijo - Realiza soft-delete de un costo fijo.
      * affectedRows=0 indica que ya estaba eliminado o no existe.
      * Ruta: DELETE /api/costos-fijos/:id

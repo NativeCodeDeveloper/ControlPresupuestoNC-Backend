@@ -1,0 +1,180 @@
+@base = http://localhost:3001/api
+
+### ========================================
+### SOCIOS
+### ========================================
+
+### GET - Obtener todos los socios
+GET {{base}}/socios
+
+### GET - Obtener socio por ID
+GET {{base}}/socios/1
+
+### POST - Crear nuevo socio
+POST {{base}}/socios
+Content-Type: application/json
+
+{
+  "nombre": "Dan Sepulveda",
+  "porcentaje_participacion": 50,
+  "email": "dan@nativecode.cl",
+  "telefono": "+56912345678"
+}
+
+### PUT - Actualizar socio
+PUT {{base}}/socios/1
+Content-Type: application/json
+
+{
+  "nombre": "Dan Sepulveda Actualizado",
+  "porcentaje_participacion": 60,
+  "email": "dan@nativecode.cl",
+  "telefono": "+56912345678"
+}
+
+### PATCH - Actualizar porcentaje
+PATCH {{base}}/socios/1/porcentaje
+Content-Type: application/json
+
+{
+  "porcentaje_participacion": 55
+}
+
+### DELETE - Eliminar socio
+DELETE {{base}}/socios/1
+
+
+### ========================================
+### PROYECTOS
+### ========================================
+
+### GET - Obtener todos los proyectos
+GET {{base}}/proyectos
+
+### GET - Obtener proyecto por ID
+GET {{base}}/proyectos/1
+
+### POST - Crear nuevo proyecto
+POST {{base}}/proyectos
+Content-Type: application/json
+
+{
+  "nombre": "Proyecto Test Docker",
+  "tipo_proyecto_id": 1,
+  "estado_proyecto_id": 1,
+  "nombre_cliente": "Cliente Test",
+  "rut_cliente": "12345678-9",
+  "email_cliente": "cliente@test.cl",
+  "telefono_cliente": "+56911111111",
+  "monto_acordado": 1500000,
+  "fecha_creacion": "2026-04-18",
+  "fecha_entrega": "2026-06-01",
+  "observaciones": "Proyecto de prueba Docker"
+}
+
+### GET - Obtener pagos de un proyecto
+GET {{base}}/proyectos/1/pagos
+
+### POST - Registrar pago de proyecto
+POST {{base}}/proyectos/1/pagos
+Content-Type: application/json
+
+{
+  "concepto": "Primera cuota",
+  "monto": 500000,
+  "fecha_pago": "2026-04-18",
+  "numero_comprobante": "0001",
+  "notas": "Pago inicial"
+}
+
+### PATCH - Cambiar estado del proyecto
+PATCH {{base}}/proyectos/1/estado
+Content-Type: application/json
+
+{
+  "estado_proyecto_id": 2
+}
+
+### DELETE - Eliminar proyecto
+DELETE {{base}}/proyectos/1
+
+
+### ========================================
+### COSTOS FIJOS
+### ========================================
+
+### GET - Obtener todos los costos fijos
+GET {{base}}/costos-fijos
+
+### GET - Obtener costos fijos activos
+GET {{base}}/costos-fijos/activos
+
+### GET - Obtener costo fijo por ID
+GET {{base}}/costos-fijos/1
+
+### POST - Crear costo fijo
+POST {{base}}/costos-fijos
+Content-Type: application/json
+
+{
+  "servicio": "Arriendo oficina",
+  "monto": 400000,
+  "frecuencia": "mensual",
+  "dia_vencimiento": 5,
+  "notas": "Pagado los primeros 5 días del mes"
+}
+
+### PUT - Actualizar costo fijo
+PUT {{base}}/costos-fijos/1
+Content-Type: application/json
+
+{
+  "servicio": "Arriendo oficina actualizado",
+  "monto": 420000,
+  "frecuencia": "mensual",
+  "dia_vencimiento": 5
+}
+
+### PATCH - Desactivar costo fijo
+PATCH {{base}}/costos-fijos/1/desactivar
+
+### DELETE - Eliminar costo fijo
+DELETE {{base}}/costos-fijos/1
+
+
+### ========================================
+### RETIROS DE SOCIOS
+### ========================================
+
+### GET - Obtener retiros de un socio
+GET {{base}}/socios/1/retiros
+
+### GET - Disponible actual del socio
+GET {{base}}/socios/1/disponible
+
+### POST - Registrar retiro
+POST {{base}}/socios/1/retiros
+Content-Type: application/json
+
+{
+  "monto": 200000,
+  "fecha_retiro": "2026-04-18",
+  "descripcion": "Retiro mensual abril"
+}
+
+### DELETE - Eliminar retiro (reemplaza 1 por el id_retiro real)
+DELETE {{base}}/socios/1/retiros/1
+
+
+### ========================================
+### FINANZAS (resumen y reportes)
+### ========================================
+
+### GET - Resumen general de finanzas
+GET {{base}}/finanzas/resumen
+
+### GET - Vencimientos próximos
+GET {{base}}/finanzas/vencimientos
+
+### GET - Flujo de caja
+GET {{base}}/finanzas/flujo-caja

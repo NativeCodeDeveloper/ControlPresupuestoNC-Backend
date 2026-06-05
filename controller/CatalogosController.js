@@ -38,19 +38,40 @@ export default class CatalogosController {
      */
     static async crearTipoProyecto(req, res) {
         try {
-            const { nombre, name, descripcion } = req.body;
+            const { nombre, name, descripcion, precio_base, price, precio } = req.body;
             const nombreFinal = nombre || name;
+            const precioFinal = precio_base ?? precio ?? price ?? null;
 
             if (!nombreFinal) {
                 return res.status(400).json({ message: "Nombre requerido" });
             }
 
             const catalogos = new Catalogos();
-            const resultado = await catalogos.insertTipoProyecto(nombreFinal, descripcion);
+            const resultado = await catalogos.insertTipoProyecto(nombreFinal, descripcion, precioFinal ? Number(precioFinal) : null);
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CatalogosController.crearTipoProyecto]", error);
             return res.status(500).json({ message: "Error al crear tipo de proyecto" });
+        }
+    }
+
+    /**
+     * actualizarPrecioTipoProyecto - Actualiza el precio base de un tipo de proyecto.
+     * Ruta: PATCH /api/catalogos/tipos-proyectos/:id/precio
+     * Body: { precio_base (number) }
+     */
+    static async actualizarPrecioTipoProyecto(req, res) {
+        try {
+            const { id } = req.params;
+            const { precio_base, price } = req.body;
+            const precioFinal = precio_base ?? price ?? null;
+            if (!id) return res.status(400).json({ message: "ID requerido" });
+            const catalogos = new Catalogos();
+            const resultado = await catalogos.updatePrecioTipoProyecto(id, precioFinal ? Number(precioFinal) : null);
+            return res.json({ ok: true, resultado });
+        } catch (error) {
+            console.error("[CatalogosController.actualizarPrecioTipoProyecto]", error);
+            return res.status(500).json({ message: "Error al actualizar precio" });
         }
     }
 

@@ -239,6 +239,25 @@ export default class CostosFijos {
         }
     }
 
+    // REGISTRAR PAGO — actualiza fecha_ultimo_pago para avanzar el recordatorio
+    async registrarPago(id, fechaPago) {
+        const conexion = DataBase.getInstance();
+        try {
+            const hasUltimoPago = await hasCostosFijosColumn(conexion, "fecha_ultimo_pago");
+            if (!hasUltimoPago) {
+                throw new Error("La columna fecha_ultimo_pago no existe. Ejecutar la migración 2026-06-04.");
+            }
+            const hasActivo = await hasCostosFijosColumn(conexion, "activo");
+            const idColumn = await getCostoFijoIdColumn(conexion);
+            const where = [`${idColumn} = ?`];
+            if (hasActivo) where.push("activo = 1");
+            const query = `UPDATE costos_fijos SET fecha_ultimo_pago = ? WHERE ${where.join(" AND ")}`;
+            return await conexion.ejecutarQuery(query, [fechaPago, id]);
+        } catch (error) {
+            throw new Error(`Error al registrar pago del costo fijo: ${error.message}`);
+        }
+    }
+
     // ELIMINAR COSTO FIJO
     async deleteCostoFijo(id) {
         const conexion = DataBase.getInstance();

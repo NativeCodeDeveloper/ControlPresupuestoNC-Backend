@@ -17,6 +17,9 @@ router.post('/', CostosFixosController.crearCostoFijo);
 // PUT - Actualizar costo fijo
 router.put('/:id', CostosFixosController.actualizarCostoFijo);
 
+// PATCH - Registrar pago (avanza fecha_ultimo_pago y el recordatorio de vencimiento)
+router.patch('/:id/pagar', CostosFixosController.registrarPago);
+
 // PATCH - Desactivar costo fijo
 router.patch('/:id/desactivar', CostosFixosController.desactivarCostoFijo);
 

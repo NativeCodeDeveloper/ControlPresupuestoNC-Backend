@@ -171,62 +171,70 @@ export default class Proyectos {
     }
 
     // CREAR NUEVO PROYECTO
-    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones) {
+    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
+            const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
-            const query = hasActivo
-                ? `INSERT INTO proyectos
-                   (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
-                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, activo)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-                : `INSERT INTO proyectos
-                   (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
-                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-            const param = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente,
-                email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega || null, observaciones];
 
-            const resultado = await conexion.ejecutarQuery(query, param);
-            return resultado;
-        } catch (error) {
-            try {
-                // Compatibilidad con versiones anteriores del esquema.
-                const hasActivo = await hasProyectosColumn(conexion, "activo");
-                const tipoColumn = await getProyectoTipoColumn(conexion);
-                const estadoColumn = await getProyectoEstadoColumn(conexion);
-                const fallbackQuery = hasActivo
-                    ? `INSERT INTO proyectos
-                       (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
-                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones, activo)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
-                    : `INSERT INTO proyectos
-                       (codigo_interno, nombre, ${tipoColumn}, ${estadoColumn}, nombre_cliente, rut_cliente,
-                        email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`;
-                const fallbackParam = [codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente,
-                    email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, observaciones];
-                return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
-            } catch (_) {
-                throw new Error('Error al crear proyecto en la base de datos');
+            const cols = [
+                "codigo_interno", "nombre", tipoColumn, estadoColumn,
+                "nombre_cliente", "rut_cliente", "email_cliente", "telefono_cliente",
+                "profesion_cliente", "monto_acordado", "fecha_creacion", "fecha_entrega", "observaciones"
+            ];
+            const vals = [
+                codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id,
+                nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
+                profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega || null, observaciones
+            ];
+
+            if (hasCiclo) {
+                cols.push("ciclo_facturacion", "fecha_inicio_servicio", "fecha_proximo_pago");
+                vals.push(ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null);
             }
+
+            if (hasActivo) {
+                cols.push("activo");
+                vals.push(1);
+            }
+
+            const placeholders = vals.map(() => "?").join(", ");
+            const query = `INSERT INTO proyectos (${cols.join(", ")}) VALUES (${placeholders})`;
+            return await conexion.ejecutarQuery(query, vals);
+        } catch (error) {
+            throw new Error('Error al crear proyecto en la base de datos');
         }
     }
 
     // ACTUALIZAR PROYECTO
-    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones) {
+    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
             const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
             const idColumn = await getProyectoIdColumn(conexion);
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
-            const where = [`${idColumn} = ?`];
+
+            const setParts = [
+                `nombre = ?`, `${tipoColumn} = ?`, `${estadoColumn} = ?`,
+                `nombre_cliente = ?`, `rut_cliente = ?`, `email_cliente = ?`,
+                `telefono_cliente = ?`, `profesion_cliente = ?`, `monto_acordado = ?`,
+                `fecha_entrega = ?`, `observaciones = ?`
+            ];
             const param = [nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente,
-                telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, id];
+                telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones];
+
+            if (hasCiclo) {
+                setParts.push("ciclo_facturacion = ?", "fecha_inicio_servicio = ?", "fecha_proximo_pago = ?");
+                param.push(ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null);
+            }
+
+            param.push(id);
+            const where = [`${idColumn} = ?`];
 
             if (hasActivo) {
                 where.push("activo = 1");
@@ -235,13 +243,8 @@ export default class Proyectos {
                 param.push(`${SOFT_DELETE_PREFIX}%`);
             }
 
-            const query = `UPDATE proyectos SET nombre = ?, ${tipoColumn} = ?, ${estadoColumn} = ?,
-                           nombre_cliente = ?, rut_cliente = ?, email_cliente = ?, telefono_cliente = ?,
-                           profesion_cliente = ?, monto_acordado = ?, fecha_entrega = ?, observaciones = ?
-                           WHERE ${where.join(" AND ")}`;
-
-            const resultado = await conexion.ejecutarQuery(query, param);
-            return resultado;
+            const query = `UPDATE proyectos SET ${setParts.join(", ")} WHERE ${where.join(" AND ")}`;
+            return await conexion.ejecutarQuery(query, param);
         } catch (error) {
             throw new Error('Error al actualizar proyecto en la base de datos');
         }
@@ -320,7 +323,7 @@ export default class Proyectos {
         }
     }
 
-    // REGISTRAR PAGO DE PROYECTO (y actualizar monto_pagado)
+    // REGISTRAR PAGO DE PROYECTO (y actualizar monto_pagado + avanzar fecha_proximo_pago)
     async insertProyectoPago(proyecto_id, concepto, monto, fecha_pago, numero_comprobante, notas) {
         const conexion = DataBase.getInstance();
         try {
@@ -336,6 +339,31 @@ export default class Proyectos {
                 SELECT COALESCE(SUM(monto), 0) FROM proyecto_pagos WHERE ${proyectoFkColumn} = ?
             ) WHERE ${proyectoIdColumn} = ?`;
             await conexion.ejecutarQuery(queryUpdate, [proyecto_id, proyecto_id]);
+
+            // Si existe ciclo de facturación, avanzar fecha_proximo_pago automáticamente
+            const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
+            if (hasCiclo) {
+                const [proy] = await conexion.ejecutarQuery(
+                    `SELECT ciclo_facturacion, fecha_proximo_pago FROM proyectos WHERE ${proyectoIdColumn} = ?`,
+                    [proyecto_id]
+                );
+                if (proy && proy.ciclo_facturacion && proy.ciclo_facturacion !== "Unico") {
+                    const mesesPorCiclo = { Mensual: 1, Trimestral: 3, Anual: 12 };
+                    const paso = mesesPorCiclo[proy.ciclo_facturacion] || 0;
+                    if (paso > 0) {
+                        // Base: fecha_proximo_pago actual o la fecha del pago registrado
+                        const base = proy.fecha_proximo_pago
+                            ? new Date(proy.fecha_proximo_pago)
+                            : new Date(fecha_pago);
+                        base.setMonth(base.getMonth() + paso);
+                        const nextDate = base.toISOString().slice(0, 10);
+                        await conexion.ejecutarQuery(
+                            `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
+                            [nextDate, proyecto_id]
+                        );
+                    }
+                }
+            }
 
             return resultado;
         } catch (error) {

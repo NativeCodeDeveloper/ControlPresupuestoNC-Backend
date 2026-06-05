@@ -16,6 +16,7 @@ import retirosSociosRoutes from "./view/retirosSociosRoutes.js";
 import finanzasRoutes from "./view/finanzasRoutes.js";
 import inversionesRoutes from "./view/inversionesRoutes.js";
 import CatalogosController from "./controller/CatalogosController.js";
+import rateLimit from "express-rate-limit";
 
 // RUTAS ANTIGUAS - innovaDent (mantener por ahora)
 import productoRoute from "./view/productoRoutes.js";
@@ -42,6 +43,10 @@ import { ejecutarRecordatoriosAutomaticos } from "./services/notificacionPreviaD
 
 const app = express();
 app.use(helmet());
+app.use(rateLimit({
+    windowMs: 60_000, // 1 minute
+    max: 100 // Limit each IP to 100 requests per windowMs
+}));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
 app.use(express.json({ limit: "1mb" }));
 app.use(cookieParser());

@@ -7,6 +7,7 @@ import CatalogosController from "../controller/CatalogosController.js";
 // ========================================
 router.get('/tipos-proyecto', CatalogosController.obtenerTiposProyectos);
 router.post('/tipos-proyecto', CatalogosController.crearTipoProyecto);
+router.patch('/tipos-proyecto/:id/precio', CatalogosController.actualizarPrecioTipoProyecto);
 router.delete('/tipos-proyecto/:id', CatalogosController.eliminarTipoProyecto);
 
 // ========================================

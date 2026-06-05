@@ -88,18 +88,39 @@ export default class Catalogos {
         }
     }
 
-    async insertTipoProyecto(nombre, descripcion) {
+    async insertTipoProyecto(nombre, descripcion, precio_base) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasColumn(conexion, "tipos_proyectos", "activo");
-            const query = hasActivo
-                ? "INSERT INTO tipos_proyectos (nombre, descripcion, activo) VALUES (?, ?, 1)"
-                : "INSERT INTO tipos_proyectos (nombre, descripcion) VALUES (?, ?)";
-            const param = [nombre, descripcion || null];
-            const resultado = await conexion.ejecutarQuery(query, param);
-            return resultado;
+            const hasPrecio = await hasColumn(conexion, "tipos_proyectos", "precio_base");
+            let query, param;
+            if (hasPrecio) {
+                query = hasActivo
+                    ? "INSERT INTO tipos_proyectos (nombre, descripcion, precio_base, activo) VALUES (?, ?, ?, 1)"
+                    : "INSERT INTO tipos_proyectos (nombre, descripcion, precio_base) VALUES (?, ?, ?)";
+                param = [nombre, descripcion || null, precio_base || null];
+            } else {
+                query = hasActivo
+                    ? "INSERT INTO tipos_proyectos (nombre, descripcion, activo) VALUES (?, ?, 1)"
+                    : "INSERT INTO tipos_proyectos (nombre, descripcion) VALUES (?, ?)";
+                param = [nombre, descripcion || null];
+            }
+            return await conexion.ejecutarQuery(query, param);
         } catch (error) {
             throw new Error('Error al crear tipo de proyecto');
+        }
+    }
+
+    async updatePrecioTipoProyecto(id, precio_base) {
+        const conexion = DataBase.getInstance();
+        try {
+            const idColumn = await getCatalogPkColumn(conexion, "tipos_proyectos");
+            return await conexion.ejecutarQuery(
+                `UPDATE tipos_proyectos SET precio_base = ? WHERE ${idColumn} = ?`,
+                [precio_base || null, id]
+            );
+        } catch (error) {
+            throw new Error('Error al actualizar precio del tipo de proyecto');
         }
     }
 

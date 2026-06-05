@@ -2,6 +2,69 @@ import Proyectos from "../model/Proyectos.js";
 import { parsePagination } from "../utils/pagination.js";
 
 /**
+ * computeAlertaPago - Calcula el estado de alerta de facturación de un proyecto.
+ * Lógica:
+ *   - Sin ciclo recurrente o sin fecha_proximo_pago → null (sin alerta)
+ *   - > 7 días para vencer → "verde"
+ *   - 0-7 días para vencer → "naranja"
+ *   - Vencido (mismo día o pasado) → "rojo"
+ *   - > 7 días vencido → "rojo" (la desactivación se maneja en auto-deactivate)
+ */
+function computeAlertaPago(proyecto) {
+    if (!proyecto?.ciclo_facturacion || proyecto.ciclo_facturacion === "Unico") return null;
+    if (!proyecto?.fecha_proximo_pago) return null;
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const vence = new Date(proyecto.fecha_proximo_pago);
+    vence.setHours(0, 0, 0, 0);
+
+    const diffMs = vence.getTime() - today.getTime();
+    const diffDays = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+
+    if (diffDays > 7) return "verde";
+    if (diffDays >= 0) return "naranja";
+    return "rojo";
+}
+
+/**
+ * enrichProyectos - Agrega estado_alerta_pago y dias_para_vencer a cada proyecto.
+ * También detecta proyectos con más de 7 días vencidos para auto-desactivar.
+ */
+async function enrichProyectos(proyectos, proyectoModel) {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const autoDeactivateIds = [];
+
+    const enriched = proyectos.map((p) => {
+        const alerta = computeAlertaPago(p);
+        let diasParaVencer = null;
+
+        if (p.fecha_proximo_pago && p.ciclo_facturacion && p.ciclo_facturacion !== "Unico") {
+            const vence = new Date(p.fecha_proximo_pago);
+            vence.setHours(0, 0, 0, 0);
+            diasParaVencer = Math.floor((vence.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+
+            // Auto-deactivate si lleva más de 7 días vencido
+            if (diasParaVencer < -7) {
+                autoDeactivateIds.push(p.id);
+            }
+        }
+
+        return { ...p, estado_alerta_pago: alerta, dias_para_vencer: diasParaVencer };
+    });
+
+    // Desactivar proyectos muy vencidos en background (no bloquea la respuesta)
+    if (autoDeactivateIds.length > 0) {
+        Promise.allSettled(
+            autoDeactivateIds.map((id) => proyectoModel.updateEstadoProyecto(id, 5)) // 5 = Cancelado/Inactivo
+        ).catch(() => {});
+    }
+
+    return enriched;
+}
+
+/**
  * ProyectosController
  * Gestiona los proyectos del negocio: creación, seguimiento de estado,
  * registro de pagos recibidos y eliminación.
@@ -27,7 +90,8 @@ export default class ProyectosController {
                 res.set("x-pagination-limit", String(pagination.limit));
                 res.set("x-pagination-offset", String(pagination.offset));
             }
-            return res.json(dataProyectos);
+            const enriched = await enrichProyectos(dataProyectos, proyecto);
+            return res.json(enriched);
         } catch (error) {
             console.error("[ProyectosController.obtenerProyectos]", error);
             return res.status(500).json({ message: "Error al obtener proyectos" });
@@ -50,7 +114,8 @@ export default class ProyectosController {
             if (!dataProyecto) {
                 return res.status(404).json({ message: "Proyecto no encontrado" });
             }
-            return res.json(dataProyecto);
+            const [enriched] = await enrichProyectos([dataProyecto], proyecto);
+            return res.json(enriched);
         } catch (error) {
             console.error("[ProyectosController.obtenerProyectoPorId]", error);
             return res.status(500).json({ message: "Error al obtener proyecto" });
@@ -90,7 +155,10 @@ export default class ProyectosController {
                 monto_acordado,
                 fecha_creacion,
                 fecha_entrega,
-                observaciones
+                observaciones,
+                ciclo_facturacion,
+                fecha_inicio_servicio,
+                fecha_proximo_pago
             } = req.body;
 
             // Validar campos mínimos obligatorios
@@ -107,19 +175,12 @@ export default class ProyectosController {
             }
 
             const resultado = await proyecto.insertProyecto(
-                codigoFinal,
-                nombre,
-                tipo_proyecto_id,
-                estado_proyecto_id,
-                nombre_cliente,
-                rut_cliente,
-                email_cliente,
-                telefono_cliente,
-                profesion_cliente,
-                monto_acordado,
+                codigoFinal, nombre, tipo_proyecto_id, estado_proyecto_id,
+                nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
+                profesion_cliente, monto_acordado,
                 fecha_creacion || new Date().toISOString().split('T')[0],
-                fecha_entrega || null,
-                observaciones
+                fecha_entrega || null, observaciones,
+                ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null
             );
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
         } catch (error) {
@@ -149,7 +210,10 @@ export default class ProyectosController {
                 profesion_cliente,
                 monto_acordado,
                 fecha_entrega,
-                observaciones
+                observaciones,
+                ciclo_facturacion,
+                fecha_inicio_servicio,
+                fecha_proximo_pago
             } = req.body;
 
             if (!id || !nombre || !nombre_cliente) {
@@ -158,18 +222,10 @@ export default class ProyectosController {
 
             const proyecto = new Proyectos();
             const resultado = await proyecto.updateProyecto(
-                id,
-                nombre,
-                tipo_proyecto_id,
-                estado_proyecto_id,
-                nombre_cliente,
-                rut_cliente,
-                email_cliente,
-                telefono_cliente,
-                profesion_cliente,
-                monto_acordado,
-                fecha_entrega,
-                observaciones
+                id, nombre, tipo_proyecto_id, estado_proyecto_id,
+                nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
+                profesion_cliente, monto_acordado, fecha_entrega, observaciones,
+                ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago
             );
             // affectedRows=0 indica que el proyecto no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
