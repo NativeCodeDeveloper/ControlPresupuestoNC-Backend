@@ -529,17 +529,19 @@ async function getFixedCostsData(conexion) {
     const hasFechaFin = columns.has("fecha_fin");
     const hasFrecuencia = columns.has("frecuencia");
     const hasFechaPago = columns.has("fecha_pago");
+    const hasFechaUltimoPago = columns.has("fecha_ultimo_pago");
 
     const selectFrecuencia = hasFrecuencia ? "frecuencia" : "'Mensual' AS frecuencia";
     const selectFechaPago = hasFechaPago ? "fecha_pago" : "1 AS fecha_pago";
     const selectFechaInicio = hasFechaInicio ? "fecha_inicio" : "NULL AS fecha_inicio";
     const selectFechaFin = hasFechaFin ? "fecha_fin" : "NULL AS fecha_fin";
+    const selectFechaUltimoPago = hasFechaUltimoPago ? "fecha_ultimo_pago" : "NULL AS fecha_ultimo_pago";
     const filter = await getCostosFijosNotDeletedFilter(conexion);
     const whereClause = filter.whereClause ? `WHERE ${filter.whereClause}` : "";
 
     return safeQuery(
         conexion,
-        `SELECT ${idColumn} AS id, monto, ${selectFrecuencia}, ${selectFechaPago}, ${selectFechaInicio}, ${selectFechaFin}
+        `SELECT ${idColumn} AS id, monto, ${selectFrecuencia}, ${selectFechaPago}, ${selectFechaInicio}, ${selectFechaFin}, ${selectFechaUltimoPago}
          FROM costos_fijos
          ${whereClause}`,
         filter.params,

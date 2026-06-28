@@ -117,10 +117,10 @@ export default class Proyectos {
 
             const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
             let query = `SELECT p.*, p.${idColumn} AS id, p.${tipoColumn} AS tipo_proyecto_id, p.${estadoColumn} AS estado_proyecto_id,
-                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre
+                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre, ep.color_hex as estado_color
                            FROM proyectos p
-                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn}
-                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn}
+                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn} AND tp.activo = 1
+                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn} AND ep.activo = 1
                            ${whereClause}
                            ORDER BY p.fecha_creacion DESC`;
             if (pagination) {
@@ -157,10 +157,10 @@ export default class Proyectos {
             }
 
             const query = `SELECT p.*, p.${idColumn} AS id, p.${tipoColumn} AS tipo_proyecto_id, p.${estadoColumn} AS estado_proyecto_id,
-                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre
+                                  tp.nombre as tipo_nombre, ep.nombre as estado_nombre, ep.color_hex as estado_color
                            FROM proyectos p
-                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn}
-                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn}
+                           LEFT JOIN tipos_proyectos tp ON p.${tipoColumn} = tp.${tipoPkColumn} AND tp.activo = 1
+                           LEFT JOIN estados_proyectos ep ON p.${estadoColumn} = ep.${estadoPkColumn} AND ep.activo = 1
                            WHERE ${where.join(" AND ")}`;
 
             const resultado = await conexion.ejecutarQuery(query, param);
@@ -225,12 +225,23 @@ export default class Proyectos {
                 `telefono_cliente = ?`, `profesion_cliente = ?`, `monto_acordado = ?`,
                 `fecha_entrega = ?`, `observaciones = ?`
             ];
-            const param = [nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente,
-                telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones];
+            const param = [
+                nombre,
+                tipo_proyecto_id ?? null,
+                estado_proyecto_id ?? null,
+                nombre_cliente,
+                rut_cliente ?? null,
+                email_cliente ?? null,
+                telefono_cliente ?? null,
+                profesion_cliente ?? null,
+                monto_acordado ?? null,
+                fecha_entrega ?? null,
+                observaciones ?? null
+            ];
 
             if (hasCiclo) {
                 setParts.push("ciclo_facturacion = ?", "fecha_inicio_servicio = ?", "fecha_proximo_pago = ?");
-                param.push(ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null);
+                param.push(ciclo_facturacion ?? "Unico", fecha_inicio_servicio ?? null, fecha_proximo_pago ?? null);
             }
 
             param.push(id);
@@ -246,6 +257,7 @@ export default class Proyectos {
             const query = `UPDATE proyectos SET ${setParts.join(", ")} WHERE ${where.join(" AND ")}`;
             return await conexion.ejecutarQuery(query, param);
         } catch (error) {
+            console.error('[Proyectos.updateProyecto] SQL error:', error);
             throw new Error('Error al actualizar proyecto en la base de datos');
         }
     }
@@ -347,20 +359,22 @@ export default class Proyectos {
                     `SELECT ciclo_facturacion, fecha_proximo_pago FROM proyectos WHERE ${proyectoIdColumn} = ?`,
                     [proyecto_id]
                 );
-                if (proy && proy.ciclo_facturacion && proy.ciclo_facturacion !== "Unico") {
+                if (proy && proy.ciclo_facturacion && proy.ciclo_facturacion !== "Unico" && proy.fecha_proximo_pago) {
                     const mesesPorCiclo = { Mensual: 1, Trimestral: 3, Anual: 12 };
                     const paso = mesesPorCiclo[proy.ciclo_facturacion] || 0;
                     if (paso > 0) {
-                        // Base: fecha_proximo_pago actual o la fecha del pago registrado
-                        const base = proy.fecha_proximo_pago
-                            ? new Date(proy.fecha_proximo_pago)
-                            : new Date(fecha_pago);
-                        base.setMonth(base.getMonth() + paso);
-                        const nextDate = base.toISOString().slice(0, 10);
-                        await conexion.ejecutarQuery(
-                            `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
-                            [nextDate, proyecto_id]
-                        );
+                        const paymentDate = new Date(fecha_pago);
+                        const dueDate = new Date(proy.fecha_proximo_pago);
+                        // Solo avanzar si el pago ocurrió en la fecha de vencimiento o después.
+                        // Si el cliente paga antes del vencimiento, el próximo ciclo no cambia.
+                        if (paymentDate >= dueDate) {
+                            dueDate.setUTCMonth(dueDate.getUTCMonth() + paso);
+                            const nextDate = dueDate.toISOString().slice(0, 10);
+                            await conexion.ejecutarQuery(
+                                `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
+                                [nextDate, proyecto_id]
+                            );
+                        }
                     }
                 }
             }
