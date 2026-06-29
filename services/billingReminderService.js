@@ -84,7 +84,7 @@ function formatearMonto(monto) {
 }
 
 function buildEmailHtml({ proyecto, stage }) {
-    const montoStr = formatearMonto(proyecto.monto_mensual || proyecto.monto_acordado);
+    const montoStr = formatearMonto(proyecto.monto_acordado);
     const fechaStr = formatearFecha(proyecto.fecha_proximo_pago);
 
     return `
@@ -147,7 +147,7 @@ async function enviarCorreoCobro(proyecto, stage) {
         to: [{ email: destinatario }],
         subject: `${stage.asunto} — ${proyecto.nombre_cliente || proyecto.nombre}`,
         htmlContent: buildEmailHtml({ proyecto, stage }),
-        textContent: `${stage.etiqueta}: ${stage.mensaje}\n\nCliente: ${proyecto.nombre_cliente}\nProyecto: ${proyecto.nombre} (${proyecto.codigo_interno})\nMonto: ${formatearMonto(proyecto.monto_mensual || proyecto.monto_acordado)}\nVencimiento: ${proyecto.fecha_proximo_pago}\n\nAcción: ${stage.accion}`
+        textContent: `${stage.etiqueta}: ${stage.mensaje}\n\nCliente: ${proyecto.nombre_cliente}\nProyecto: ${proyecto.nombre} (${proyecto.codigo_interno})\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nVencimiento: ${proyecto.fecha_proximo_pago}\n\nAcción: ${stage.accion}`
     };
 
     try {
@@ -196,7 +196,7 @@ async function obtenerProyectosParaRecordar(conexion) {
 
     return conexion.ejecutarQuery(
         `SELECT id_proyecto, codigo_interno, nombre, nombre_cliente,
-                monto_acordado, monto_mensual, fecha_proximo_pago, ciclo_facturacion,
+                monto_acordado, fecha_proximo_pago, ciclo_facturacion,
                 rem_aviso, rem_urgente, rem_vencimiento, rem_seguimiento, rem_escalacion
          FROM proyectos
          WHERE activo = 1

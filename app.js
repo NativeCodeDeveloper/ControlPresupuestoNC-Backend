@@ -45,6 +45,7 @@ import { ejecutarRecordatoriosCobro } from "./services/billingReminderService.js
 
 
 const app = express();
+app.set('trust proxy', 1);
 app.use(helmet());
 app.use(rateLimit({
     windowMs: 60_000, // 1 minute
