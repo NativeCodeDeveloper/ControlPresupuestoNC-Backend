@@ -1,6 +1,7 @@
 import Inversiones from "../model/Inversiones.js";
 import { getFinancialSummary } from "../services/financeService.js";
 import { parsePagination } from "../utils/pagination.js";
+import DataBase from "../config/Database.js";
 
 // Fondos válidos desde los que se puede originar una inversión
 const FONDOS_VALIDOS = ["reinversion", "emergencia"];
@@ -99,43 +100,47 @@ export default class InversionesController {
                 return res.status(400).json({ message: "tipo_movimiento inválido. Use inversion o retiro" });
             }
 
-            // Consultar el saldo disponible del fondo en tiempo real antes de registrar
-            const summary = await getFinancialSummary({});
-            const disponibleFondo = Number(summary?.fondos?.[fondoFinal]?.disponible || 0);
+            // Verificar saldo e insertar dentro de una transacción atómica
+            // para evitar race condition (dos inversiones simultáneas del mismo fondo)
+            const db = DataBase.getInstance();
+            const { resultado, created, disponibleFondo } = await db.withTransaction(async (conn) => {
+                // Bloquear la tabla de inversiones para el fondo durante la transacción
+                await conn.query(
+                    'SELECT id FROM inversiones WHERE fondo_origen = ? LIMIT 1 FOR UPDATE',
+                    [fondoFinal]
+                );
 
-            // Rechazar si el monto solicitado supera el saldo disponible del fondo
-            if (montoFinal > disponibleFondo) {
-                return res.status(400).json({
-                    message: `Monto excede saldo disponible del fondo ${fondoFinal}`,
-                    fondo_origen: fondoFinal,
-                    disponible: disponibleFondo,
-                    solicitado: montoFinal
-                });
-            }
+                const summary = await getFinancialSummary({});
+                const saldo = Number(summary?.fondos?.[fondoFinal]?.disponible || 0);
 
-            const inversiones = new Inversiones();
-            const resultado = await inversiones.insertInversion(
-                conceptoFinal,
-                montoFinal,
-                fechaFinal,
-                categoriaFinal,
-                fondoFinal,
-                observaciones || notes || null,
-                movimientoFinal
-            );
+                if (montoFinal > saldo) {
+                    throw Object.assign(
+                        new Error(`Monto excede saldo disponible del fondo ${fondoFinal}`),
+                        { status: 400, fondo_origen: fondoFinal, disponible: saldo, solicitado: montoFinal }
+                    );
+                }
 
-            // Leer el registro recién creado para retornarlo completo al frontend
-            const created = await inversiones.selectInversionById(resultado.insertId);
+                const inversiones = new Inversiones();
+                const res = await inversiones.insertInversion(
+                    conceptoFinal, montoFinal, fechaFinal,
+                    categoriaFinal, fondoFinal,
+                    observaciones || notes || null, movimientoFinal
+                );
+                const createdRec = await inversiones.selectInversionById(res.insertId);
+                return { resultado: res, created: createdRec, disponibleFondo: saldo };
+            });
 
             return res.json({
                 ok: true,
                 resultado,
                 data: created,
                 fondo_origen: fondoFinal,
-                // Saldo estimado restante después del movimiento (informativo)
                 saldo_restante: Math.max(0, disponibleFondo - montoFinal)
             });
         } catch (error) {
+            if (error.status === 400) {
+                return res.status(400).json({ message: error.message, fondo_origen: error.fondo_origen, disponible: error.disponible, solicitado: error.solicitado });
+            }
             console.error("[InversionesController.crearInversion]", error);
             return res.status(500).json({ message: "Error al crear inversión" });
         }

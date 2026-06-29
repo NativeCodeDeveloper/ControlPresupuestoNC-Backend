@@ -44,8 +44,10 @@ function normalizeMonth(rawMonth) {
     if (rawMonth === undefined || rawMonth === null || rawMonth === "") return null;
     const value = Number(rawMonth);
     if (Number.isNaN(value)) return null;
-    if (value >= 0 && value <= 11) return value + 1;
+    // Base-1 (1-12) tiene prioridad — se chequea primero para evitar el off-by-one
     if (value >= 1 && value <= 12) return value;
+    // Base-0 (0) solo aplica al valor 0 (Enero), ya cubierto por Date.getMonth()
+    if (value === 0) return 1;
     return null;
 }
 
@@ -1539,8 +1541,10 @@ export async function getFlujoCajaAnual(query = {}) {
         flujoNeto: acc.flujoNeto + m.flujoNeto,
         utilidadNeta: acc.utilidadNeta + m.utilidadNeta,
         fondoEmergencia: acc.fondoEmergencia + m.fondoEmergencia,
-        costosFijosDevengados: acc.costosFijosDevengados + m.costosFijosDevengados
-    }), { ingresos: 0, egresos: 0, retiros: 0, flujoNeto: 0, utilidadNeta: 0, fondoEmergencia: 0, costosFijosDevengados: 0 });
+        costosFijosDevengados: acc.costosFijosDevengados + m.costosFijosDevengados,
+        costosFijosEfectivos: acc.costosFijosEfectivos + m.costosFijosEfectivos,
+        costosVariables: acc.costosVariables + m.costosVariables
+    }), { ingresos: 0, egresos: 0, retiros: 0, flujoNeto: 0, utilidadNeta: 0, fondoEmergencia: 0, costosFijosDevengados: 0, costosFijosEfectivos: 0, costosVariables: 0 });
 
     return { año: safeYear, meses, totales };
 }

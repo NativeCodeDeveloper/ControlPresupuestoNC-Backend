@@ -3,6 +3,8 @@ import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import morgan from "morgan";
+import { clerkMiddleware } from "@clerk/express";
+import { requireAuth } from "./middleware/requireAuth.js";
 
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO
 import sociosRoutes from "./view/sociosRoutes.js";
@@ -108,11 +110,16 @@ const allowedOrigins = String(process.env.CORS_ORIGINS || "")
     .map((value) => value.trim())
     .filter(Boolean);
 
+const isProduction = process.env.NODE_ENV === "production";
+
 const corsConfig = {
     origin: (origin, callback) => {
-        // Si no hay lista configurada, se mantiene modo permisivo (compatibilidad actual).
-        if (allowedOrigins.length === 0) return callback(null, true);
-        // Permitir requests sin origin explícito (curl, scripts internos, health checks).
+        // Sin lista configurada: permisivo en desarrollo, bloqueante en producción.
+        if (allowedOrigins.length === 0) {
+            if (isProduction) return callback(new Error("CORS_ORIGINS no configurado en producción"));
+            return callback(null, true);
+        }
+        // Permitir requests sin origin (curl, scripts internos, health checks).
         if (!origin) return callback(null, true);
         if (allowedOrigins.includes(origin)) return callback(null, true);
         return callback(new Error("Origin no permitido por CORS"));
@@ -123,26 +130,27 @@ const corsConfig = {
 };
 
 app.use(cors(corsConfig));
+app.use(clerkMiddleware());
 
 app.get("/", (req, res) => { res.send("Backend Control Presupuestario - Running OK"); });
 
 // ========================================
-// RUTAS NUEVAS - CONTROL PRESUPUESTARIO
+// RUTAS NUEVAS - CONTROL PRESUPUESTARIO (protegidas con Clerk JWT)
 // ========================================
-app.use("/api/socios", sociosRoutes);
-app.use("/api/proyectos", proyectosRoutes);
-app.use("/api/costos-fijos", costosFixosRoutes);
-app.use("/api/costos-variables", costosVariablesRoutes);
-app.use("/api/servicios", serviciosRoutes);
-app.use("/api/config/financiera", configuracionRoutes);
-app.use("/api/catalogos", catalogosRoutes);
-app.use("/api/socios", retirosSociosRoutes);
-app.use("/api/finanzas", finanzasRoutes);
-app.use("/api/inversiones", inversionesRoutes);
+app.use("/api/socios", requireAuth, sociosRoutes);
+app.use("/api/proyectos", requireAuth, proyectosRoutes);
+app.use("/api/costos-fijos", requireAuth, costosFixosRoutes);
+app.use("/api/costos-variables", requireAuth, costosVariablesRoutes);
+app.use("/api/servicios", requireAuth, serviciosRoutes);
+app.use("/api/config/financiera", requireAuth, configuracionRoutes);
+app.use("/api/catalogos", requireAuth, catalogosRoutes);
+app.use("/api/socios", requireAuth, retirosSociosRoutes);
+app.use("/api/finanzas", requireAuth, finanzasRoutes);
+app.use("/api/inversiones", requireAuth, inversionesRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
-app.get("/api/tipos-costos", CatalogosController.obtenerTiposCostosVariables);
-app.post("/api/tipos-costos", CatalogosController.crearTipoCostoVariable);
-app.delete("/api/tipos-costos/:id", CatalogosController.eliminarTipoCostoVariable);
+app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
+app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
+app.delete("/api/tipos-costos/:id", requireAuth, CatalogosController.eliminarTipoCostoVariable);
 
 // ========================================
 // RUTAS ANTIGUAS - innovaDent (mantener por ahora)

@@ -72,7 +72,11 @@ export default class SociosController {
 
             // Validar campos mínimos obligatorios antes de ir a la BD
             if (!nombre || porcentaje_participacion === undefined) {
-                return res.status(404).json({ message: "Faltan datos requeridos" });
+                return res.status(400).json({ message: "Faltan datos requeridos" });
+            }
+            const pctNum = Number(porcentaje_participacion);
+            if (!Number.isFinite(pctNum) || pctNum < 0 || pctNum > 100) {
+                return res.status(400).json({ message: "porcentaje_participacion debe ser un número entre 0 y 100" });
             }
 
             const socio = new Socios();

@@ -165,6 +165,10 @@ export default class ProyectosController {
             if (!nombre || !tipo_proyecto_id || !estado_proyecto_id || !nombre_cliente || !monto_acordado) {
                 return res.status(400).json({ message: "Faltan datos requeridos" });
             }
+            const montoNum = Number(monto_acordado);
+            if (!Number.isFinite(montoNum) || montoNum <= 0) {
+                return res.status(400).json({ message: "monto_acordado debe ser un número positivo" });
+            }
 
             const proyecto = new Proyectos();
 

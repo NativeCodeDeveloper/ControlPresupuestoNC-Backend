@@ -2,6 +2,7 @@ import RetirosSocios from "../model/RetirosSocios.js";
 import Socios from "../model/Socios.js";
 import { getPartnerAvailableAmount } from "../services/financeService.js";
 import { parsePagination } from "../utils/pagination.js";
+import DataBase from "../config/Database.js";
 
 /**
  * RetirosSociosController
@@ -116,60 +117,64 @@ export default class RetirosSociosController {
                 ? {}
                 : { month: d.getMonth(), year: d.getFullYear() };
 
-            // Obtener el disponible real del socio para el período del retiro
-            const disponibleData = await getPartnerAvailableAmount(id, queryPeriodo);
-            if (!disponibleData) {
-                return res.status(500).json({ message: "Error al calcular disponible del socio" });
-            }
+            // Verificar saldo e insertar dentro de una transacción atómica
+            // para evitar race condition (doble retiro simultáneo del mismo socio)
+            const db = DataBase.getInstance();
+            const { resultado, disponibleData } = await db.withTransaction(async (conn) => {
+                // Bloquear la fila del socio hasta que termine la transacción
+                await conn.query('SELECT id FROM socios WHERE id = ? FOR UPDATE', [id]);
 
-            const disponible = Number(disponibleData.disponible || 0);
+                const data = await getPartnerAvailableAmount(id, queryPeriodo);
+                if (!data) throw Object.assign(new Error("Error al calcular disponible del socio"), { status: 500 });
 
-            // Rechazar si el monto solicitado supera el disponible (acumulado o límite mensual)
-            if (montoFinal > disponible) {
-                const acumulado = Number(disponibleData.acumulado || 0);
-                const margenMensual = Number(disponibleData.margenMensual || 0);
-                const limiteMensual = Number(disponibleData.limiteMensual || 3_000_000);
-                const retiradoMes = Number(disponibleData.retiradoMes || 0);
-
-                // Armar mensaje descriptivo según cuál restricción aplica
-                let mensaje = "Monto excede el disponible del socio";
-                if (acumulado < montoFinal) {
-                    mensaje = `El socio no tiene suficiente acumulado. Disponible acumulado: $${acumulado.toLocaleString('es-CL')}`;
-                } else if (margenMensual < montoFinal) {
-                    mensaje = `Límite mensual de retiro alcanzado ($${limiteMensual.toLocaleString('es-CL')}/mes). Ya retirado este mes: $${retiradoMes.toLocaleString('es-CL')}`;
+                const disponible = Number(data.disponible || 0);
+                if (montoFinal > disponible) {
+                    const acumulado = Number(data.acumulado || 0);
+                    const margenMensual = Number(data.margenMensual || 0);
+                    const limiteMensual = Number(data.limiteMensual || 3_000_000);
+                    const retiradoMes = Number(data.retiradoMes || 0);
+                    let mensaje = "Monto excede el disponible del socio";
+                    if (acumulado < montoFinal) {
+                        mensaje = `El socio no tiene suficiente acumulado. Disponible acumulado: $${acumulado.toLocaleString('es-CL')}`;
+                    } else if (margenMensual < montoFinal) {
+                        mensaje = `Límite mensual de retiro alcanzado ($${limiteMensual.toLocaleString('es-CL')}/mes). Ya retirado este mes: $${retiradoMes.toLocaleString('es-CL')}`;
+                    }
+                    const err = Object.assign(new Error(mensaje), {
+                        status: 400, disponible, acumulado, retiradoMes, limiteMensual, margenMensual, solicitado: montoFinal, periodo: data.period
+                    });
+                    throw err;
                 }
 
-                return res.status(400).json({
-                    message: mensaje,
-                    disponible,
-                    acumulado,
-                    retiradoMes,
-                    limiteMensual,
-                    margenMensual,
-                    solicitado: montoFinal,
-                    periodo: disponibleData.period
-                });
-            }
+                const retiros = new RetirosSocios();
+                const res = await retiros.insertRetiro(
+                    id, montoFinal, fechaFinal,
+                    descripcion || description || 'Retiro de utilidades',
+                    numero_comprobante || receipt || null,
+                    observaciones || null
+                );
+                return { resultado: res, disponibleData: data };
+            });
 
-            // Registrar el retiro en la base de datos
-            const retiros = new RetirosSocios();
-            const resultado = await retiros.insertRetiro(
-                id,
-                montoFinal,
-                fechaFinal,
-                descripcion || description || 'Retiro de utilidades',
-                numero_comprobante || receipt || null,
-                observaciones || null
-            );
             return res.json({
                 ok: true,
                 resultado,
-                // Saldo estimado restante después del retiro (informativo, no recalcula en tiempo real)
                 disponible_actualizado: Math.max(0, Number(disponibleData.disponible || 0) - montoFinal)
             });
         } catch (error) {
+            if (error.status === 400) {
+                return res.status(400).json({
+                    message: error.message,
+                    disponible: error.disponible,
+                    acumulado: error.acumulado,
+                    retiradoMes: error.retiradoMes,
+                    limiteMensual: error.limiteMensual,
+                    margenMensual: error.margenMensual,
+                    solicitado: error.solicitado,
+                    periodo: error.periodo
+                });
+            }
             console.error("[RetirosSociosController.registrarRetiro]", error);
-            return res.status(500).json({ message: "Error al registrar retiro" });
+            return res.status(error.status || 500).json({ message: error.message || "Error al registrar retiro" });
         }
     }
 

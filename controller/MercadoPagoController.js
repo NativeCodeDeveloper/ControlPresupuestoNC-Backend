@@ -1,4 +1,5 @@
 import dotenv from 'dotenv';
+import crypto from 'crypto';
 import mercadopago, * as mpNamed from 'mercadopago';
 import MercadoPago from '../model/MercadoPago.js';
 import PedidoComprasController from "../controller/PedidoComprasController.js";
@@ -169,11 +170,38 @@ IMPORTANTE
 
 export const recibirPago = async (req, res) => {
     const ACCESS_TOKEN = process.env.MP_ACCESS_TOKEN;
+    const WEBHOOK_SECRET = process.env.MP_WEBHOOK_SECRET;
     const NOMBRE_EMPRESA = process.env.NOMBRE_EMPRESA;
-
 
     if (!ACCESS_TOKEN) {
         return res.status(500).json({ error: 'No hay access token configurado en el servidor' });
+    }
+
+    // Verificar firma HMAC-SHA256 de MercadoPago (solo si el secret está configurado)
+    if (WEBHOOK_SECRET) {
+        const xSignature = req.headers['x-signature'];
+        const xRequestId = req.headers['x-request-id'];
+        const dataId = req.query?.['data.id'] || req.body?.data?.id || '';
+
+        if (!xSignature) {
+            return res.status(401).json({ error: 'Firma de webhook ausente' });
+        }
+
+        const signatureParts = xSignature.split(',').reduce((acc, part) => {
+            const [k, v] = part.trim().split('=');
+            if (k && v) acc[k] = v;
+            return acc;
+        }, {});
+
+        const ts = signatureParts['ts'];
+        const v1 = signatureParts['v1'];
+        const manifest = `id:${dataId};request-id:${xRequestId};ts:${ts};`;
+        const expectedSignature = crypto.createHmac('sha256', WEBHOOK_SECRET).update(manifest).digest('hex');
+
+        if (!crypto.timingSafeEqual(Buffer.from(v1 || ''), Buffer.from(expectedSignature))) {
+            console.warn('[MP Webhook] Firma inválida — posible request falsificado');
+            return res.status(401).json({ error: 'Firma de webhook inválida' });
+        }
     }
 
     const body = req.body;
@@ -210,9 +238,17 @@ export const recibirPago = async (req, res) => {
             return res.status(200).json({ received: true });
         }
 
-        // 2) CASO MERCHANT_ORDER  👇 **LO NUEVO**
+        // 2) CASO MERCHANT_ORDER
         if (body.topic === 'merchant_order' && body.resource) {
-            const merchantOrderUrl = body.resource;
+            // SEGURIDAD: extraer solo el ID numérico del resource para evitar SSRF.
+            // body.resource llega como "https://api.mercadopago.com/merchant_orders/12345"
+            const resourceMatch = String(body.resource).match(/\/merchant_orders\/(\d+)/);
+            if (!resourceMatch) {
+                console.error('merchant_order resource con formato inesperado:', body.resource);
+                return res.status(200).json({ received: true, lookup_error: true });
+            }
+            const merchantOrderId = resourceMatch[1];
+            const merchantOrderUrl = `https://api.mercadopago.com/merchant_orders/${merchantOrderId}`;
 
             const resp = await fetch(merchantOrderUrl, {
                 headers: {
