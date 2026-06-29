@@ -31,12 +31,11 @@ function computeAlertaPago(proyecto) {
  * enrichProyectos - Agrega estado_alerta_pago y dias_para_vencer a cada proyecto.
  * También detecta proyectos con más de 7 días vencidos para auto-desactivar.
  */
-async function enrichProyectos(proyectos, proyectoModel) {
+async function enrichProyectos(proyectos) {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const autoDeactivateIds = [];
 
-    const enriched = proyectos.map((p) => {
+    return proyectos.map((p) => {
         const alerta = computeAlertaPago(p);
         let diasParaVencer = null;
 
@@ -44,24 +43,10 @@ async function enrichProyectos(proyectos, proyectoModel) {
             const vence = new Date(p.fecha_proximo_pago);
             vence.setHours(0, 0, 0, 0);
             diasParaVencer = Math.floor((vence.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-            // Auto-deactivate si lleva más de 7 días vencido
-            if (diasParaVencer < -7) {
-                autoDeactivateIds.push(p.id);
-            }
         }
 
         return { ...p, estado_alerta_pago: alerta, dias_para_vencer: diasParaVencer };
     });
-
-    // Desactivar proyectos muy vencidos en background (no bloquea la respuesta)
-    if (autoDeactivateIds.length > 0) {
-        Promise.allSettled(
-            autoDeactivateIds.map((id) => proyectoModel.updateEstadoProyecto(id, 5)) // 5 = Cancelado/Inactivo
-        ).catch(() => {});
-    }
-
-    return enriched;
 }
 
 /**
@@ -90,7 +75,7 @@ export default class ProyectosController {
                 res.set("x-pagination-limit", String(pagination.limit));
                 res.set("x-pagination-offset", String(pagination.offset));
             }
-            const enriched = await enrichProyectos(dataProyectos, proyecto);
+            const enriched = await enrichProyectos(dataProyectos);
             return res.json(enriched);
         } catch (error) {
             console.error("[ProyectosController.obtenerProyectos]", error);
@@ -114,7 +99,7 @@ export default class ProyectosController {
             if (!dataProyecto) {
                 return res.status(404).json({ message: "Proyecto no encontrado" });
             }
-            const [enriched] = await enrichProyectos([dataProyecto], proyecto);
+            const [enriched] = await enrichProyectos([dataProyecto]);
             return res.json(enriched);
         } catch (error) {
             console.error("[ProyectosController.obtenerProyectoPorId]", error);

@@ -384,25 +384,10 @@ async function getPagosProyectoFkColumn(conexion) {
     return cols.has("id_proyecto") ? "id_proyecto" : "proyecto_id";
 }
 
-async function getProyectosNotDeletedSubquery(conexion) {
-    const pkCol = await getProyectoPkColumn(conexion);
-    const fkCol = await getPagosProyectoFkColumn(conexion);
-    const cols = await getTableColumns(conexion, "proyectos");
-
-    if (cols.has("activo")) {
-        return {
-            whereClause: `${fkCol} IN (SELECT ${pkCol} FROM proyectos WHERE activo = 1)`,
-            params: []
-        };
-    }
-
-    if (cols.has("notas")) {
-        return {
-            whereClause: `${fkCol} IN (SELECT ${pkCol} FROM proyectos WHERE (notas IS NULL OR notas NOT LIKE ?))`,
-            params: [`${SOFT_DELETE_PREFIX}%`]
-        };
-    }
-
+async function getProyectosNotDeletedSubquery(_conexion) {
+    // Los pagos ya registrados representan ingresos reales aunque el proyecto esté inactivo.
+    // proyecto_pagos tiene ON DELETE CASCADE, así que pagos de proyectos hard-deleted
+    // se eliminan automáticamente. No filtramos por activo aquí.
     return { whereClause: "", params: [] };
 }
 

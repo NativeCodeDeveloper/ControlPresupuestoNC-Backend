@@ -41,6 +41,7 @@ import subSubCategoriaRoutes from "./view/subSubCategoriaRoutes.js";
 import especificacionProductoRoutes from "./view/especificacionProductoRoutes.js";
 import notificacionAgendamientoRoutes from "./view/notificacionAgendamientoRoutes.js";
 import { ejecutarRecordatoriosAutomaticos } from "./services/notificacionPreviaDia.js";
+import { ejecutarRecordatoriosCobro } from "./services/billingReminderService.js";
 
 
 const app = express();
@@ -241,6 +242,25 @@ app.listen(PORT, () => {
     if (typeof cronHandle.unref === "function") {
         cronHandle.unref();
     }
+
+    // CRON BILLING: Recordatorios de cobro — cada 6 horas
+    // Las columnas rem_* evitan duplicados por ciclo de facturación
+    const billingHandle = setInterval(() => {
+        ejecutarRecordatoriosCobro().catch((err) => {
+            console.error('[BILLING] Error inesperado en cron:', err?.message || err);
+        });
+    }, 6 * 60 * 60 * 1000);
+
+    if (typeof billingHandle.unref === "function") {
+        billingHandle.unref();
+    }
+
+    // Ejecutar billing una vez al iniciar para no esperar 6 horas
+    setTimeout(() => {
+        ejecutarRecordatoriosCobro().catch((err) => {
+            console.error('[BILLING] Error en primera ejecución:', err?.message || err);
+        });
+    }, 15000);
 
     // Ejecutar una vez al iniciar el servidor
     setTimeout(() => {
