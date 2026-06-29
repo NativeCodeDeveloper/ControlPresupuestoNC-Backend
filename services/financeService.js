@@ -807,25 +807,28 @@ async function getPeriodFinancialCore(conexion, period, context = {}) {
             return sum + (Number.isFinite(amount) ? amount : 0);
         }, 0);
 
-    const operatingResult = totalIncome - totalExpenses;
-    const baseForDeductions = Math.max(0, operatingResult);
-
     const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
     const reinvestPct = Number(config?.porcentaje_reinversion || 0);
 
+    // Resultado de caja (cash): solo pagos reales del período
+    const operatingResult = totalIncome - totalExpenses;
+    const baseForDeductions = Math.max(0, operatingResult);
     const emergencyFundDeduction = (baseForDeductions * emergencyPct) / 100;
     const reinvestmentDeduction = (baseForDeductions * reinvestPct) / 100;
 
-    const netProfit = operatingResult - emergencyFundDeduction - reinvestmentDeduction;
-    const withdrawals = Number(retirosMes?.total || 0);
-    const partnersAvailable = Math.max(0, netProfit - withdrawals);
-
-    // Resultado contable (devengado): usa provisión mensual en vez del pago real
+    // Resultado contable (accrual/devengado): incluye provisión mensual de costos anuales.
+    // Base correcta para distribución: evita repartir plata que se necesitará para pagos anuales.
     const resultadoContable = totalIncome - totalCostosDevengados - totalVariableCosts;
     const baseContable = Math.max(0, resultadoContable);
     const emergenciaContable = (baseContable * emergencyPct) / 100;
     const reinversionContable = (baseContable * reinvestPct) / 100;
     const utilidadContable = resultadoContable - emergenciaContable - reinversionContable;
+
+    // netProfit para distribución a socios = base devengada (accrual).
+    // Garantiza que la provisión anual ($31.200/mes servidores) ya está descontada.
+    const netProfit = utilidadContable;
+    const withdrawals = Number(retirosMes?.total || 0);
+    const partnersAvailable = Math.max(0, netProfit - withdrawals);
 
     return {
         totalIncome,
@@ -1497,8 +1500,11 @@ export async function getFlujoCajaAnual(query = {}) {
                 return sum + (Number.isFinite(amount) ? amount : 0);
             }, 0);
 
-        // Devengado: provisión mensual proporcional de todos los costos fijos activos
+        // Provisión: solo costos anuales/trimestrales prorrateados mensualmente.
+        // Los mensuales ya están en efectivos — no se "provisionan", se pagan directo.
+        // Esto es lo que se "aparta" cada mes para cubrir pagos futuros de gran monto.
         const costosFijosDevengados = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => cost?.frecuencia && cost.frecuencia !== 'Mensual')
             .filter((cost) => fixedCostIsActiveInPeriod(cost, safeYear, mes - 1))
             .reduce((sum, cost) => {
                 const amount = getMonthlyAccrualAmount(cost);
