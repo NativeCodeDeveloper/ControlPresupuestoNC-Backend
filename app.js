@@ -8,6 +8,7 @@ import { requireAuth } from "./middleware/requireAuth.js";
 
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO
 import sociosRoutes from "./view/sociosRoutes.js";
+import synapseRoutes from "./view/synapseRoutes.js";
 import proyectosRoutes from "./view/proyectosRoutes.js";
 import costosFixosRoutes from "./view/costosFixosRoutes.js";
 import costosVariablesRoutes from "./view/costosVariablesRoutes.js";
@@ -150,6 +151,7 @@ app.use("/api/catalogos", requireAuth, catalogosRoutes);
 app.use("/api/socios", requireAuth, retirosSociosRoutes);
 app.use("/api/finanzas", requireAuth, finanzasRoutes);
 app.use("/api/inversiones", requireAuth, inversionesRoutes);
+app.use("/api/synapse", requireAuth, synapseRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
