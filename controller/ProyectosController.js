@@ -143,7 +143,8 @@ export default class ProyectosController {
                 observaciones,
                 ciclo_facturacion,
                 fecha_inicio_servicio,
-                fecha_proximo_pago
+                fecha_proximo_pago,
+                url_cobro_mercadopago
             } = req.body;
 
             // Validar campos mínimos obligatorios
@@ -169,7 +170,8 @@ export default class ProyectosController {
                 profesion_cliente, monto_acordado,
                 fecha_creacion || new Date().toISOString().split('T')[0],
                 fecha_entrega || null, observaciones,
-                ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null
+                ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null,
+                url_cobro_mercadopago || null
             );
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
         } catch (error) {
@@ -202,7 +204,8 @@ export default class ProyectosController {
                 observaciones,
                 ciclo_facturacion,
                 fecha_inicio_servicio,
-                fecha_proximo_pago
+                fecha_proximo_pago,
+                url_cobro_mercadopago
             } = req.body;
 
             if (!id || !nombre || !nombre_cliente) {
@@ -214,7 +217,8 @@ export default class ProyectosController {
                 id, nombre, tipo_proyecto_id, estado_proyecto_id,
                 nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
                 profesion_cliente, monto_acordado, fecha_entrega, observaciones,
-                ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago
+                ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago,
+                url_cobro_mercadopago ?? null
             );
             // affectedRows=0 indica que el proyecto no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {

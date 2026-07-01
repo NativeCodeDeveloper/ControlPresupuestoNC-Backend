@@ -1,19 +1,22 @@
 import DataBase from '../config/Database.js';
+import { formatearFecha, formatearMonto, sendBrevoEmail } from './emailUtils.js';
 
 /**
  * SISTEMA DE RECORDATORIOS DE COBRO - NativeCode Finance
  *
  * Envía correos al equipo NativeCode cuando un proyecto está por vencer o vencido.
  * 5 etapas de escalación:
- *   -5 días  → Preparación: preparar y enviar cobro
- *   -1 día   → Urgente: enviar cobro hoy
+ *   +5 días  → Preparación: preparar y enviar cobro
+ *   +1 día   → Urgente: enviar cobro hoy
  *    0 días  → Vencimiento: hoy vence el cobro
- *   +3 días  → Seguimiento: sin confirmación de pago
- *   +7 días  → Escalación urgente
+ *   -3 días  → Seguimiento: sin confirmación de pago
+ *   -7 días  → Escalación urgente
  *
  * Cada columna rem_* guarda el valor de fecha_proximo_pago cuando se envió,
  * así se auto-resetea cuando el ciclo avanza al siguiente mes.
  */
+
+const LOG = '[BILLING]';
 
 const STAGES = [
     {
@@ -62,26 +65,6 @@ const STAGES = [
         accion: 'Requiere atención inmediata. Contacta al cliente con carácter urgente.'
     }
 ];
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), timeoutMs);
-    try {
-        return await fetch(url, { ...options, signal: controller.signal });
-    } finally {
-        clearTimeout(timer);
-    }
-}
-
-function formatearFecha(fechaStr) {
-    if (!fechaStr) return '—';
-    const fecha = new Date(fechaStr);
-    return fecha.toLocaleDateString('es-CL', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
-}
-
-function formatearMonto(monto) {
-    return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' }).format(monto || 0);
-}
 
 function buildEmailHtml({ proyecto, stage }) {
     const montoStr = formatearMonto(proyecto.monto_acordado);
@@ -141,52 +124,6 @@ function buildEmailHtml({ proyecto, stage }) {
 </html>`;
 }
 
-async function enviarCorreoCobro(proyecto, stage) {
-    const { BREVO_API_KEY } = process.env;
-    const destinatario = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
-
-    if (!BREVO_API_KEY) {
-        console.warn('[BILLING] BREVO_API_KEY no configurada. Correo no enviado.');
-        return false;
-    }
-    if (!destinatario) {
-        console.warn('[BILLING] BILLING_REMINDER_TO no configurado. Correo no enviado.');
-        return false;
-    }
-
-    const payload = {
-        sender: { name: 'NativeCode Finance', email: destinatario },
-        to: [{ email: destinatario }],
-        subject: `${stage.asunto} — ${proyecto.nombre_cliente || proyecto.nombre}`,
-        htmlContent: buildEmailHtml({ proyecto, stage }),
-        textContent: `${stage.etiqueta}: ${stage.mensaje}\n\nCliente: ${proyecto.nombre_cliente}\nProyecto: ${proyecto.nombre} (${proyecto.codigo_interno})\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nVencimiento: ${proyecto.fecha_proximo_pago}\n\nAcción: ${stage.accion}`
-    };
-
-    try {
-        const resp = await fetchWithTimeout('https://api.brevo.com/v3/smtp/email', {
-            method: 'POST',
-            headers: {
-                accept: 'application/json',
-                'content-type': 'application/json',
-                'api-key': BREVO_API_KEY
-            },
-            body: JSON.stringify(payload)
-        }, Number(process.env.EMAIL_TIMEOUT_MS || 15000));
-
-        if (!resp.ok) {
-            const errText = await resp.text().catch(() => '');
-            console.error(`[BILLING] Brevo error ${resp.status}:`, errText);
-            return false;
-        }
-
-        console.log(`[BILLING] Correo "${stage.etiqueta}" enviado para proyecto ${proyecto.codigo_interno} — ${proyecto.nombre_cliente}`);
-        return true;
-    } catch (error) {
-        console.error('[BILLING] Error enviando correo:', error.message);
-        return false;
-    }
-}
-
 async function marcarEnviado(conexion, idProyecto, col, fechaProximoPago) {
     try {
         await conexion.ejecutarQuery(
@@ -194,15 +131,11 @@ async function marcarEnviado(conexion, idProyecto, col, fechaProximoPago) {
             [fechaProximoPago, idProyecto]
         );
     } catch (error) {
-        console.error(`[BILLING] Error marcando ${col} para proyecto ${idProyecto}:`, error.message);
+        console.error(`${LOG} Error marcando ${col} para proyecto ${idProyecto}:`, error.message);
     }
 }
 
 async function obtenerProyectosParaRecordar(conexion) {
-    // DATEDIFF(fecha_proximo_pago, CURDATE()):
-    //   positivo → días que faltan
-    //   0 → vence hoy
-    //   negativo → días que lleva vencido
     const diffs = STAGES.map(s => s.diff);
     const placeholders = diffs.map(() => '?').join(', ');
 
@@ -220,9 +153,15 @@ async function obtenerProyectosParaRecordar(conexion) {
 }
 
 export async function ejecutarRecordatoriosCobro() {
-    console.log('[BILLING] ========================================');
-    console.log('[BILLING] Iniciando recordatorios de cobro...');
-    console.log('[BILLING] Fecha:', new Date().toLocaleString('es-CL'));
+    console.log(`${LOG} ========================================`);
+    console.log(`${LOG} Iniciando recordatorios de cobro...`);
+    console.log(`${LOG} Fecha:`, new Date().toLocaleString('es-CL'));
+
+    const senderEmail = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
+    if (!senderEmail) {
+        console.warn(`${LOG} BILLING_REMINDER_TO no configurado. Saltando.`);
+        return { enviados: 0, errores: 0 };
+    }
 
     const conexion = DataBase.getInstance();
     let enviados = 0;
@@ -232,12 +171,12 @@ export async function ejecutarRecordatoriosCobro() {
         const proyectos = await obtenerProyectosParaRecordar(conexion);
 
         if (!Array.isArray(proyectos) || proyectos.length === 0) {
-            console.log('[BILLING] Sin proyectos que requieran recordatorio hoy.');
-            console.log('[BILLING] ========================================');
+            console.log(`${LOG} Sin proyectos que requieran recordatorio hoy.`);
+            console.log(`${LOG} ========================================`);
             return { enviados: 0, errores: 0 };
         }
 
-        console.log(`[BILLING] ${proyectos.length} proyecto(s) a procesar`);
+        console.log(`${LOG} ${proyectos.length} proyecto(s) a procesar`);
 
         for (const proyecto of proyectos) {
             const diff = Math.round(
@@ -247,14 +186,22 @@ export async function ejecutarRecordatoriosCobro() {
             const stage = STAGES.find(s => s.diff === diff);
             if (!stage) continue;
 
-            // Ya fue enviado para este ciclo de facturación
             if (proyecto[stage.col] === proyecto.fecha_proximo_pago) {
-                console.log(`[BILLING] ${stage.etiqueta} ya enviado para ${proyecto.codigo_interno}`);
+                console.log(`${LOG} ${stage.etiqueta} ya enviado para ${proyecto.codigo_interno}`);
                 continue;
             }
 
-            console.log(`[BILLING] Enviando ${stage.etiqueta} → ${proyecto.nombre_cliente} (${proyecto.codigo_interno})`);
-            const ok = await enviarCorreoCobro(proyecto, stage);
+            console.log(`${LOG} Enviando ${stage.etiqueta} → ${proyecto.nombre_cliente} (${proyecto.codigo_interno})`);
+
+            const ok = await sendBrevoEmail({
+                senderName: 'NativeCode Finance',
+                senderEmail,
+                to: senderEmail,
+                subject: `${stage.asunto} — ${proyecto.nombre_cliente || proyecto.nombre}`,
+                htmlContent: buildEmailHtml({ proyecto, stage }),
+                textContent: `${stage.etiqueta}: ${stage.mensaje}\n\nCliente: ${proyecto.nombre_cliente}\nProyecto: ${proyecto.nombre} (${proyecto.codigo_interno})\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nVencimiento: ${proyecto.fecha_proximo_pago}\n\nAcción: ${stage.accion}`,
+                logPrefix: LOG
+            });
 
             if (ok) {
                 await marcarEnviado(conexion, proyecto.id_proyecto, stage.col, proyecto.fecha_proximo_pago);
@@ -264,11 +211,11 @@ export async function ejecutarRecordatoriosCobro() {
             }
         }
     } catch (error) {
-        console.error('[BILLING] Error general:', error.message);
+        console.error(`${LOG} Error general:`, error.message);
         errores++;
     }
 
-    console.log(`[BILLING] Finalizado. Enviados: ${enviados}, Errores: ${errores}`);
-    console.log('[BILLING] ========================================');
+    console.log(`${LOG} Finalizado. Enviados: ${enviados}, Errores: ${errores}`);
+    console.log(`${LOG} ========================================`);
     return { enviados, errores };
 }

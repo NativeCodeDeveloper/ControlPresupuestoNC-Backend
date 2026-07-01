@@ -171,11 +171,12 @@ export default class Proyectos {
     }
 
     // CREAR NUEVO PROYECTO
-    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago) {
+    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
             const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
+            const hasUrlCobro = await hasProyectosColumn(conexion, "url_cobro_mercadopago");
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
 
@@ -195,6 +196,11 @@ export default class Proyectos {
                 vals.push(ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null);
             }
 
+            if (hasUrlCobro) {
+                cols.push("url_cobro_mercadopago");
+                vals.push(url_cobro_mercadopago || null);
+            }
+
             if (hasActivo) {
                 cols.push("activo");
                 vals.push(1);
@@ -209,12 +215,13 @@ export default class Proyectos {
     }
 
     // ACTUALIZAR PROYECTO
-    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago) {
+    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
             const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
             const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
+            const hasUrlCobro = await hasProyectosColumn(conexion, "url_cobro_mercadopago");
             const idColumn = await getProyectoIdColumn(conexion);
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
@@ -242,6 +249,11 @@ export default class Proyectos {
             if (hasCiclo) {
                 setParts.push("ciclo_facturacion = ?", "fecha_inicio_servicio = ?", "fecha_proximo_pago = ?");
                 param.push(ciclo_facturacion ?? "Unico", fecha_inicio_servicio ?? null, fecha_proximo_pago ?? null);
+            }
+
+            if (hasUrlCobro) {
+                setParts.push("url_cobro_mercadopago = ?");
+                param.push(url_cobro_mercadopago ?? null);
             }
 
             param.push(id);
