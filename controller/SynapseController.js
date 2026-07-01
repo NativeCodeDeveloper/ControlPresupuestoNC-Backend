@@ -83,8 +83,8 @@ export default class SynapseController {
 
     static async getTareas(req, res) {
         try {
-            const { id_estado, id_proyecto, id_asignado, prioridad, tipo, q } = req.query;
-            const data = await Synapse.getTareas({ id_estado, id_proyecto, id_asignado, prioridad, tipo, q });
+            const { id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, q } = req.query;
+            const data = await Synapse.getTareas({ id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, q });
             res.json(data);
         } catch (e) { err(res, e); }
     }
@@ -150,6 +150,37 @@ export default class SynapseController {
     static async deleteComentario(req, res) {
         try {
             await Synapse.deleteComentario(req.params.cid);
+            res.json({ ok: true });
+        } catch (e) { err(res, e); }
+    }
+
+    // ── Teams ─────────────────────────────────────────────────────────────────
+
+    static async getTeams(req, res) {
+        try {
+            res.json(await Synapse.getTeams());
+        } catch (e) { err(res, e); }
+    }
+
+    static async createTeam(req, res) {
+        try {
+            const { nombre, emoji, color_hex } = req.body;
+            if (!nombre) return res.status(400).json({ error: 'El nombre es requerido.' });
+            const result = await Synapse.createTeam({ nombre, emoji, color_hex });
+            res.status(201).json(result);
+        } catch (e) { err(res, e); }
+    }
+
+    static async updateTeam(req, res) {
+        try {
+            await Synapse.updateTeam(req.params.id, req.body);
+            res.json({ ok: true });
+        } catch (e) { err(res, e); }
+    }
+
+    static async deleteTeam(req, res) {
+        try {
+            await Synapse.deleteTeam(req.params.id);
             res.json({ ok: true });
         } catch (e) { err(res, e); }
     }

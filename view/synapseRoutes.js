@@ -29,6 +29,12 @@ router.get('/tareas/:id/comentarios',          SynapseController.getComentarios)
 router.post('/tareas/:id/comentarios',         SynapseController.createComentario);
 router.delete('/tareas/:id/comentarios/:cid',  SynapseController.deleteComentario);
 
+// Teams
+router.get('/teams',                SynapseController.getTeams);
+router.post('/teams',               SynapseController.createTeam);
+router.put('/teams/:id',            SynapseController.updateTeam);
+router.delete('/teams/:id',         SynapseController.deleteTeam);
+
 // Meta (datos de referencia para formularios)
 router.get('/meta/proyectos',       SynapseController.getProyectosParaSynapse);
 router.get('/meta/socios',          SynapseController.getSociosParaSynapse);

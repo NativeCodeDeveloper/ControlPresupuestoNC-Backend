@@ -24,11 +24,13 @@ const TAREA_SELECT = `
         e.id_estado, e.nombre AS estado_nombre, e.color_hex AS estado_color, e.es_final,
         p.id_proyecto, p.nombre AS proyecto_nombre,
         s.id_socio, s.nombre AS asignado_nombre,
+        tm.id_team, tm.nombre AS team_nombre, tm.emoji AS team_emoji, tm.color_hex AS team_color,
         ets.etiqueta_ids, ets.etiqueta_nombres, ets.etiqueta_colores
     FROM synapse_tareas t
     INNER JOIN synapse_estados e ON t.id_estado = e.id_estado
     LEFT JOIN proyectos p ON t.id_proyecto = p.id_proyecto
     LEFT JOIN socios s ON t.id_asignado = s.id_socio
+    LEFT JOIN synapse_teams tm ON t.id_team = tm.id_team
     LEFT JOIN (
         SELECT ste.id_tarea,
                GROUP_CONCAT(et.id_etiqueta ORDER BY et.nombre) AS etiqueta_ids,
@@ -126,13 +128,14 @@ export async function deleteEtiqueta(id) {
 
 // ── Tareas ────────────────────────────────────────────────────────────────────
 
-export async function getTareas({ id_estado, id_proyecto, id_asignado, prioridad, tipo, q } = {}) {
+export async function getTareas({ id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, q } = {}) {
     const conditions = [];
     const vals = [];
 
     if (id_estado)   { conditions.push('t.id_estado = ?');   vals.push(id_estado); }
     if (id_proyecto) { conditions.push('t.id_proyecto = ?'); vals.push(id_proyecto); }
     if (id_asignado) { conditions.push('t.id_asignado = ?'); vals.push(id_asignado); }
+    if (id_team)     { conditions.push('t.id_team = ?');     vals.push(id_team); }
     if (prioridad)   { conditions.push('t.prioridad = ?');   vals.push(prioridad); }
     if (tipo)        { conditions.push('t.tipo = ?');        vals.push(tipo); }
     if (q)           { conditions.push('t.titulo LIKE ?');   vals.push(`%${q}%`); }
@@ -154,17 +157,18 @@ export async function getTareaById(id) {
     return parseTarea(rows[0]);
 }
 
-export async function createTarea({ titulo, descripcion, id_estado, id_proyecto, id_asignado, prioridad, tipo, fecha_ingreso, fecha_vencimiento, etiqueta_ids }) {
+export async function createTarea({ titulo, descripcion, id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, fecha_ingreso, fecha_vencimiento, etiqueta_ids }) {
     const result = await db().ejecutarQuery(
         `INSERT INTO synapse_tareas
-         (titulo, descripcion, id_estado, id_proyecto, id_asignado, prioridad, tipo, fecha_ingreso, fecha_vencimiento)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+         (titulo, descripcion, id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, fecha_ingreso, fecha_vencimiento)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [
             titulo,
             descripcion || null,
             id_estado,
             id_proyecto || null,
             id_asignado || null,
+            id_team || null,
             prioridad || 'media',
             tipo || 'tarea',
             fecha_ingreso || new Date().toISOString().split('T')[0],
@@ -178,7 +182,7 @@ export async function createTarea({ titulo, descripcion, id_estado, id_proyecto,
     return getTareaById(id);
 }
 
-export async function updateTarea(id, { titulo, descripcion, id_estado, id_proyecto, id_asignado, prioridad, tipo, fecha_ingreso, fecha_vencimiento, etiqueta_ids }) {
+export async function updateTarea(id, { titulo, descripcion, id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, fecha_ingreso, fecha_vencimiento, etiqueta_ids }) {
     const fields = [];
     const vals = [];
 
@@ -198,6 +202,7 @@ export async function updateTarea(id, { titulo, descripcion, id_estado, id_proye
     }
     if (id_proyecto !== undefined)     { fields.push('id_proyecto = ?');     vals.push(id_proyecto || null); }
     if (id_asignado !== undefined)     { fields.push('id_asignado = ?');     vals.push(id_asignado || null); }
+    if (id_team !== undefined)         { fields.push('id_team = ?');         vals.push(id_team || null); }
     if (prioridad !== undefined)       { fields.push('prioridad = ?');       vals.push(prioridad); }
     if (tipo !== undefined)            { fields.push('tipo = ?');            vals.push(tipo); }
     if (fecha_ingreso !== undefined)   { fields.push('fecha_ingreso = ?');   vals.push(fecha_ingreso); }
@@ -267,6 +272,39 @@ export async function createComentario(id_tarea, contenido) {
 
 export async function deleteComentario(id) {
     await db().ejecutarQuery(`DELETE FROM synapse_comentarios WHERE id_comentario = ?`, [id]);
+}
+
+// ── Teams ─────────────────────────────────────────────────────────────────────
+
+export async function getTeams() {
+    return db().ejecutarQuery(
+        `SELECT * FROM synapse_teams WHERE activo = 1 ORDER BY nombre ASC`,
+        []
+    );
+}
+
+export async function createTeam({ nombre, emoji, color_hex }) {
+    const result = await db().ejecutarQuery(
+        `INSERT INTO synapse_teams (nombre, emoji, color_hex) VALUES (?, ?, ?)`,
+        [nombre, emoji || '👥', color_hex || '#6B7280']
+    );
+    return { id_team: result.insertId };
+}
+
+export async function updateTeam(id, { nombre, emoji, color_hex }) {
+    const fields = [];
+    const vals = [];
+    if (nombre !== undefined)    { fields.push('nombre = ?');    vals.push(nombre); }
+    if (emoji !== undefined)     { fields.push('emoji = ?');     vals.push(emoji); }
+    if (color_hex !== undefined) { fields.push('color_hex = ?'); vals.push(color_hex); }
+    if (!fields.length) return;
+    vals.push(id);
+    await db().ejecutarQuery(`UPDATE synapse_teams SET ${fields.join(', ')} WHERE id_team = ?`, vals);
+}
+
+export async function deleteTeam(id) {
+    await db().ejecutarQuery(`UPDATE synapse_tareas SET id_team = NULL WHERE id_team = ? AND activo = 1`, [id]);
+    await db().ejecutarQuery(`UPDATE synapse_teams SET activo = 0 WHERE id_team = ?`, [id]);
 }
 
 // ── Meta: referencias para formularios ───────────────────────────────────────
