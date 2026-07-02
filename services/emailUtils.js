@@ -27,10 +27,11 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 15000) {
  * @param {string} opts.subject
  * @param {string} opts.htmlContent
  * @param {string} opts.textContent
- * @param {string} [opts.logPrefix]  Prefijo para los console.log/error
+ * @param {string}   [opts.logPrefix]    Prefijo para los console.log/error
+ * @param {Array}    [opts.attachments]  [{ content: '<base64>', name: 'archivo.pdf' }]
  * @returns {Promise<boolean>}
  */
-export async function sendBrevoEmail({ senderName, senderEmail, to, subject, htmlContent, textContent, logPrefix = '[EMAIL]' }) {
+export async function sendBrevoEmail({ senderName, senderEmail, to, subject, htmlContent, textContent, logPrefix = '[EMAIL]', attachments = [] }) {
     const apiKey = process.env.BREVO_API_KEY;
     const timeoutMs = Number(process.env.EMAIL_TIMEOUT_MS || 15000);
 
@@ -44,7 +45,8 @@ export async function sendBrevoEmail({ senderName, senderEmail, to, subject, htm
         to: [{ email: to }],
         subject,
         htmlContent,
-        textContent
+        textContent,
+        ...(attachments.length > 0 && { attachment: attachments }),
     };
 
     try {

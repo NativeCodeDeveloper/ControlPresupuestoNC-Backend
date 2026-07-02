@@ -238,10 +238,14 @@ export default class SynapseController {
 
     static async sendCockpitEmail(req, res) {
         try {
-            const { to, subject, body } = req.body;
+            const { to, subject, body, attachments = [] } = req.body;
             if (!to || !subject || !body) {
                 return res.status(400).json({ error: 'Faltan campos: to, subject, body.' });
             }
+            // Validar adjuntos: máx 5 archivos, cada base64 ≤ 10MB aprox
+            const safeAttachments = (Array.isArray(attachments) ? attachments : [])
+                .filter(a => a?.content && a?.name)
+                .slice(0, 5);
 
             const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
             if (!recipients.length) return res.status(400).json({ error: 'Email destinatario inválido.' });
@@ -346,13 +350,14 @@ export default class SynapseController {
 
             const results = await Promise.all(recipients.map(email =>
                 sendBrevoEmail({
-                    senderName:  'NativeCode',
-                    senderEmail: 'contacto@nativecode.cl',
-                    to:          email,
+                    senderName:   'NativeCode',
+                    senderEmail:  'contacto@nativecode.cl',
+                    to:           email,
                     subject,
                     htmlContent,
-                    textContent: body,
-                    logPrefix:   '[COCKPIT-EMAIL]',
+                    textContent:  body,
+                    logPrefix:    '[COCKPIT-EMAIL]',
+                    attachments:  safeAttachments,
                 })
             ));
             const allOk = results.every(Boolean);

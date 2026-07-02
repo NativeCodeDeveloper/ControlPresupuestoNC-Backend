@@ -56,7 +56,7 @@ app.use(rateLimit({
     max: 500 // Limit each IP to 500 requests per windowMs
 }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "2mb" }));
+app.use(express.json({ limit: "15mb" }));
 app.use(cookieParser());
 const ENABLE_REMINDERS_CRON = String(process.env.ENABLE_REMINDERS_CRON ?? "true").toLowerCase() === "true";
 
