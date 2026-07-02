@@ -1,5 +1,6 @@
 import * as Synapse from '../model/Synapse.js';
 import ConfiguracionFinanciera from '../model/ConfiguracionFinanciera.js';
+import { sendBrevoEmail } from '../services/emailUtils.js';
 
 const err = (res, e, status = 500) => {
     console.error('[SYNAPSE]', e?.message || e);
@@ -232,6 +233,75 @@ export default class SynapseController {
             const config = new ConfiguracionFinanciera();
             await config.updateCockpitConfig({ meta_mensual, cockpit_columnas });
             res.json({ ok: true, data: await config.getCockpitConfig() });
+        } catch (e) { err(res, e); }
+    }
+
+    static async sendCockpitEmail(req, res) {
+        try {
+            const { to, subject, body } = req.body;
+            if (!to || !subject || !body) {
+                return res.status(400).json({ error: 'Faltan campos: to, subject, body.' });
+            }
+
+            const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
+            if (!recipients.length) return res.status(400).json({ error: 'Email destinatario inválido.' });
+
+            const htmlContent = body
+                .replace(/&/g, '&amp;')
+                .replace(/</g, '&lt;')
+                .replace(/>/g, '&gt;')
+                .replace(/\n/g, '<br>');
+
+            let allOk = true;
+            for (const email of recipients) {
+                const ok = await sendBrevoEmail({
+                    senderName:  'NativeCode',
+                    senderEmail: 'contacto@nativecode.cl',
+                    to:          email,
+                    subject,
+                    htmlContent: `<div style="font-family:-apple-system,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:600px;margin:0 auto;padding:32px 24px">${htmlContent}</div>`,
+                    textContent: body,
+                    logPrefix:   '[COCKPIT-EMAIL]',
+                });
+                if (!ok) allOk = false;
+            }
+
+            if (allOk) {
+                res.json({ ok: true, enviados: recipients.length });
+            } else {
+                res.status(500).json({ error: 'Hubo un error al enviar uno o más correos.' });
+            }
+        } catch (e) { err(res, e); }
+    }
+
+    // ── Servidores ─────────────────────────────────────────────────────────────
+
+    static async getServidores(req, res) {
+        try {
+            res.json(await Synapse.getServidores());
+        } catch (e) { err(res, e); }
+    }
+
+    static async createServidor(req, res) {
+        try {
+            const { ruta_backend, estado, id_proyecto, version, notas } = req.body;
+            if (!ruta_backend) return res.status(400).json({ error: 'ruta_backend es requerido.' });
+            const result = await Synapse.createServidor({ ruta_backend, estado, id_proyecto, version, notas });
+            res.status(201).json(result);
+        } catch (e) { err(res, e); }
+    }
+
+    static async updateServidor(req, res) {
+        try {
+            await Synapse.updateServidor(req.params.id, req.body);
+            res.json({ ok: true });
+        } catch (e) { err(res, e); }
+    }
+
+    static async deleteServidor(req, res) {
+        try {
+            await Synapse.deleteServidor(req.params.id);
+            res.json({ ok: true });
         } catch (e) { err(res, e); }
     }
 }

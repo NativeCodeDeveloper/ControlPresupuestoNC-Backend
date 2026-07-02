@@ -42,7 +42,14 @@ router.get('/meta/socios',          SynapseController.getSociosParaSynapse);
 // Production Cockpit
 router.get('/cockpit/config',       SynapseController.getCockpitConfig);
 router.put('/cockpit/config',       SynapseController.updateCockpitConfig);
+router.post('/cockpit/send-email',  SynapseController.sendCockpitEmail);
 router.get('/cockpit',              SynapseController.getCockpit);
 router.patch('/cockpit/:id',        SynapseController.updateCockpit);
+
+// Servidores Backend
+router.get('/servidores',           SynapseController.getServidores);
+router.post('/servidores',          SynapseController.createServidor);
+router.put('/servidores/:id',       SynapseController.updateServidor);
+router.delete('/servidores/:id',    SynapseController.deleteServidor);
 
 export default router;

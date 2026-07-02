@@ -437,6 +437,60 @@ export async function updateCockpitRow(id, { servidor, url_front, cockpit_observ
     );
 }
 
+// ── Servidores Backend ────────────────────────────────────────────────────────
+
+export async function getServidores() {
+    return db().ejecutarQuery(
+        `SELECT s.*,
+                p.nombre        AS proyecto_nombre,
+                p.nombre_cliente AS proyecto_cliente,
+                p.codigo_interno AS proyecto_codigo
+         FROM synapse_servidores s
+         LEFT JOIN proyectos p ON s.id_proyecto = p.id_proyecto
+         WHERE s.activo = 1
+         ORDER BY s.id_servidor ASC`,
+        []
+    );
+}
+
+export async function createServidor({ ruta_backend, estado, id_proyecto, version, notas }) {
+    const result = await db().ejecutarQuery(
+        `INSERT INTO synapse_servidores (ruta_backend, estado, id_proyecto, version, notas)
+         VALUES (?, ?, ?, ?, ?)`,
+        [
+            ruta_backend,
+            estado || 'url_disponible',
+            id_proyecto || null,
+            version || null,
+            notas || null,
+        ]
+    );
+    return { id_servidor: result.insertId };
+}
+
+export async function updateServidor(id, { ruta_backend, estado, id_proyecto, version, notas }) {
+    const fields = [];
+    const vals   = [];
+    if (ruta_backend !== undefined) { fields.push('ruta_backend = ?'); vals.push(ruta_backend); }
+    if (estado       !== undefined) { fields.push('estado = ?');       vals.push(estado); }
+    if (id_proyecto  !== undefined) { fields.push('id_proyecto = ?');  vals.push(id_proyecto || null); }
+    if (version      !== undefined) { fields.push('version = ?');      vals.push(version || null); }
+    if (notas        !== undefined) { fields.push('notas = ?');        vals.push(notas || null); }
+    if (!fields.length) return;
+    vals.push(id);
+    await db().ejecutarQuery(
+        `UPDATE synapse_servidores SET ${fields.join(', ')} WHERE id_servidor = ?`,
+        vals
+    );
+}
+
+export async function deleteServidor(id) {
+    await db().ejecutarQuery(
+        `UPDATE synapse_servidores SET activo = 0 WHERE id_servidor = ?`,
+        [id]
+    );
+}
+
 // ── Meta: referencias para formularios ───────────────────────────────────────
 
 export async function getProyectosActivos() {
