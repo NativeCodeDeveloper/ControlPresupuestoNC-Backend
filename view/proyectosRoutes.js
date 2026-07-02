@@ -1,6 +1,11 @@
 import { Router } from "express";
-const router = Router();
 import ProyectosController from "../controller/ProyectosController.js";
+
+const router = Router();
+
+router.param('id', (req, res, next, val) =>
+    /^\d+$/.test(val) ? next() : res.status(400).json({ error: 'ID inválido' })
+);
 
 // GET - Obtener todos los proyectos
 router.get('/', ProyectosController.obtenerProyectos);

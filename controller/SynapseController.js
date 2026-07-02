@@ -344,9 +344,8 @@ export default class SynapseController {
 </body>
 </html>`;
 
-            let allOk = true;
-            for (const email of recipients) {
-                const ok = await sendBrevoEmail({
+            const results = await Promise.all(recipients.map(email =>
+                sendBrevoEmail({
                     senderName:  'NativeCode',
                     senderEmail: 'contacto@nativecode.cl',
                     to:          email,
@@ -354,9 +353,9 @@ export default class SynapseController {
                     htmlContent,
                     textContent: body,
                     logPrefix:   '[COCKPIT-EMAIL]',
-                });
-                if (!ok) allOk = false;
-            }
+                })
+            ));
+            const allOk = results.every(Boolean);
 
             if (allOk) {
                 res.json({ ok: true, enviados: recipients.length });

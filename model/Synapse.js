@@ -87,12 +87,14 @@ export async function deleteEstado(id) {
 }
 
 export async function reorderEstados(orderedIds) {
-    for (let i = 0; i < orderedIds.length; i++) {
-        await db().ejecutarQuery(
-            `UPDATE synapse_estados SET orden = ? WHERE id_estado = ?`,
-            [i + 1, orderedIds[i]]
-        );
-    }
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE synapse_estados SET orden = CASE id_estado ${cases} END WHERE id_estado IN (${ids})`,
+        [...params, ...orderedIds]
+    );
 }
 
 // ── Etiquetas ─────────────────────────────────────────────────────────────────
@@ -128,7 +130,7 @@ export async function deleteEtiqueta(id) {
 
 // ── Tareas ────────────────────────────────────────────────────────────────────
 
-export async function getTareas({ id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, q } = {}) {
+export async function getTareas({ id_estado, id_proyecto, id_asignado, id_team, prioridad, tipo, q, limit, offset } = {}) {
     const conditions = [];
     const vals = [];
 
@@ -140,10 +142,12 @@ export async function getTareas({ id_estado, id_proyecto, id_asignado, id_team, 
     if (tipo)        { conditions.push('t.tipo = ?');        vals.push(tipo); }
     if (q)           { conditions.push('t.titulo LIKE ?');   vals.push(`%${q}%`); }
 
-    const where = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+    const where    = conditions.length ? ` AND ${conditions.join(' AND ')}` : '';
+    const safeLimit  = Math.min(parseInt(limit) || 500, 500);
+    const safeOffset = parseInt(offset) || 0;
     const rows = await db().ejecutarQuery(
-        `${TAREA_SELECT}${where} ORDER BY e.orden ASC, t.creado_en DESC`,
-        vals
+        `${TAREA_SELECT}${where} ORDER BY e.orden ASC, t.creado_en DESC LIMIT ? OFFSET ?`,
+        [...vals, safeLimit, safeOffset]
     );
     return (Array.isArray(rows) ? rows : []).map(parseTarea);
 }

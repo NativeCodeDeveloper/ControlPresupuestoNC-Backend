@@ -3,6 +3,11 @@ import SynapseController from '../controller/SynapseController.js';
 
 const router = Router();
 
+const numericId = (req, res, next, val) =>
+    /^\d+$/.test(val) ? next() : res.status(400).json({ error: 'ID inválido' });
+router.param('id',  numericId);
+router.param('cid', numericId);
+
 // Estados (columnas Kanban)
 router.get('/estados',              SynapseController.getEstados);
 router.post('/estados',             SynapseController.createEstado);
