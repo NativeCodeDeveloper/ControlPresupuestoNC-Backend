@@ -80,7 +80,10 @@ export default class AdminController {
             );
             if (!rows.length) return res.status(404).json({ error: 'Servidor no encontrado' });
             const srv = rows[0];
-            const processes = srv.pm2_processes ? JSON.parse(srv.pm2_processes) : [];
+            // mysql2 puede devolver JSON columns ya parseadas o como string
+            const rawProc   = srv.pm2_processes;
+            const processes = Array.isArray(rawProc) ? rawProc
+                            : (rawProc ? JSON.parse(rawProc) : []);
             const sshPrefix = srv.is_local ? null : `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${srv.ssh_user}@${srv.host}`;
 
             let cpu, ram, disk, pm2;
