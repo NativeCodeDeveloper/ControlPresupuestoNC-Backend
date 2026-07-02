@@ -246,11 +246,127 @@ export default class SynapseController {
             const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
             if (!recipients.length) return res.status(400).json({ error: 'Email destinatario inválido.' });
 
-            const htmlContent = body
+            const safeBody = body
                 .replace(/&/g, '&amp;')
                 .replace(/</g, '&lt;')
                 .replace(/>/g, '&gt;')
                 .replace(/\n/g, '<br>');
+
+            const year = new Date().getFullYear();
+
+            const htmlContent = `<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+</head>
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;">
+
+  <!-- Wrapper -->
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+         style="background:#f5f5f7;padding:48px 16px;">
+    <tr><td align="center">
+
+      <!-- Card -->
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+             style="max-width:580px;background:#ffffff;border-radius:18px;
+                    box-shadow:0 4px 24px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);
+                    overflow:hidden;">
+
+        <!-- Header band -->
+        <tr>
+          <td style="background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);
+                     padding:32px 40px 28px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td>
+                  <div style="display:inline-block;background:rgba(255,255,255,.08);
+                              border:1px solid rgba(255,255,255,.12);border-radius:10px;
+                              padding:7px 14px;margin-bottom:18px;">
+                    <span style="font-size:12px;font-weight:600;letter-spacing:.06em;
+                                 color:rgba(255,255,255,.55);text-transform:uppercase;">
+                      NativeCode · Production Cockpit
+                    </span>
+                  </div><br>
+                  <span style="font-size:24px;font-weight:700;color:#ffffff;
+                               letter-spacing:-.3px;line-height:1.2;">
+                    ${subject.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+                  </span>
+                </td>
+                <td align="right" valign="top" style="padding-left:16px;">
+                  <div style="width:44px;height:44px;background:rgba(255,255,255,.1);
+                              border:1px solid rgba(255,255,255,.15);border-radius:12px;
+                              display:flex;align-items:center;justify-content:center;
+                              font-size:22px;line-height:44px;text-align:center;">
+                    ⚡
+                  </div>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+        <!-- Thin accent line -->
+        <tr>
+          <td style="height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6,#a78bfa);"></td>
+        </tr>
+
+        <!-- Body -->
+        <tr>
+          <td style="padding:36px 40px 32px;">
+            <p style="margin:0 0 20px;font-size:15.5px;line-height:1.75;
+                      color:#1d1d1f;font-weight:400;">
+              ${safeBody}
+            </p>
+
+            <!-- Divider -->
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+                   style="margin:28px 0;">
+              <tr><td style="border-top:1px solid #e5e5ea;"></td></tr>
+            </table>
+
+            <!-- CTA hint -->
+            <p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.6;">
+              Este mensaje fue enviado desde el
+              <strong style="color:#3a3a3c;">Production Cockpit</strong> de NativeCode.<br>
+              Si tienes dudas, responde a
+              <a href="mailto:contacto@nativecode.cl"
+                 style="color:#6366f1;text-decoration:none;font-weight:500;">
+                contacto@nativecode.cl
+              </a>
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f5f5f7;padding:20px 40px;border-top:1px solid #e5e5ea;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr>
+                <td>
+                  <span style="font-size:12px;color:#8e8e93;font-weight:500;">
+                    © ${year} NativeCode · contacto@nativecode.cl
+                  </span>
+                </td>
+                <td align="right">
+                  <span style="font-size:11px;color:#aeaeb2;letter-spacing:.03em;">
+                    Enviado vía Brevo
+                  </span>
+                </td>
+              </tr>
+            </table>
+          </td>
+        </tr>
+
+      </table>
+      <!-- /Card -->
+
+    </td></tr>
+  </table>
+
+</body>
+</html>`;
 
             let allOk = true;
             for (const email of recipients) {
@@ -259,7 +375,7 @@ export default class SynapseController {
                     senderEmail: 'contacto@nativecode.cl',
                     to:          email,
                     subject,
-                    htmlContent: `<div style="font-family:-apple-system,sans-serif;font-size:15px;line-height:1.6;color:#1a1a1a;max-width:600px;margin:0 auto;padding:32px 24px">${htmlContent}</div>`,
+                    htmlContent,
                     textContent: body,
                     logPrefix:   '[COCKPIT-EMAIL]',
                 });
