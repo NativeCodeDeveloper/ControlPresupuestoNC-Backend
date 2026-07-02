@@ -7,21 +7,34 @@ import DataBase from '../config/Database.js';
 const execAsync = promisify(exec);
 const db = () => DataBase.getInstance();
 
-// Lee uso de CPU leyendo /proc/stat dos veces con 200ms de diferencia
-async function cpuPercent() {
-    const read = () => {
-        try {
-            return fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].split(/\s+/).slice(1).map(Number);
-        } catch { return null; }
-    };
-    const a = read();
-    if (!a) return null;
-    await new Promise(r => setTimeout(r, 200));
-    const b = read();
-    const idle  = v => v[3] + v[4];
-    const total = v => v.reduce((s, x) => s + x, 0);
-    const usage = 100 - ((idle(b) - idle(a)) / (total(b) - total(a))) * 100;
-    return Math.max(0, Math.min(100, Math.round(usage)));
+// Cache de la última lectura de /proc/stat para calcular delta entre requests
+// (evita medir la CPU del propio handler, que inflaría el resultado)
+let lastCpuStat = null;
+let lastCpuTime = 0;
+
+function readProcStat() {
+    try {
+        return fs.readFileSync('/proc/stat', 'utf8').split('\n')[0].split(/\s+/).slice(1).map(Number);
+    } catch { return null; }
+}
+
+function cpuPercent() {
+    const now = Date.now();
+    const cur = readProcStat();
+    if (!cur) return null;
+
+    let pct = null;
+    if (lastCpuStat && (now - lastCpuTime) > 1000) {
+        const idle  = v => v[3] + v[4]; // idle + iowait
+        const total = v => v.reduce((s, x) => s + x, 0);
+        const dIdle  = idle(cur)  - idle(lastCpuStat);
+        const dTotal = total(cur) - total(lastCpuStat);
+        if (dTotal > 0) pct = Math.max(0, Math.min(100, Math.round((1 - dIdle / dTotal) * 100)));
+    }
+
+    lastCpuStat = cur;
+    lastCpuTime = now;
+    return pct; // null en la primera llamada (sin baseline aún)
 }
 
 async function diskInfo(host, sshPrefix) {
@@ -91,8 +104,9 @@ export default class AdminController {
             if (srv.is_local) {
                 const total = os.totalmem();
                 const free  = os.freemem();
-                [cpu, disk, pm2] = await Promise.all([
-                    cpuPercent(),
+                // CPU: síncrono, usa delta entre requests (no bloquea ni se mide a sí mismo)
+                cpu = cpuPercent();
+                [disk, pm2] = await Promise.all([
                     diskInfo(null, null),
                     pm2Stats(processes, null),
                 ]);
