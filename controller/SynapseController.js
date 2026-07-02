@@ -258,6 +258,8 @@ export default class SynapseController {
 
             const year = new Date().getFullYear();
 
+            const safeSubject = subject.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+
             const htmlContent = `<!DOCTYPE html>
 <html lang="es">
 <head>
@@ -265,50 +267,68 @@ export default class SynapseController {
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="color-scheme" content="light">
 </head>
-<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;">
+<body style="margin:0;padding:0;background:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;">
 
-  <!-- Wrapper -->
   <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-         style="background:#f5f5f7;padding:48px 16px;">
+         style="background:#f2f2f7;padding:44px 16px 56px;">
     <tr><td align="center">
 
       <!-- Card -->
       <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-             style="max-width:580px;background:#ffffff;border-radius:18px;
-                    box-shadow:0 4px 24px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);
+             style="max-width:660px;width:100%;background:#ffffff;border-radius:16px;
+                    box-shadow:0 1px 4px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.07);
                     overflow:hidden;">
 
-        <!-- Header band -->
+        <!-- Top accent line -->
         <tr>
-          <td style="background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);
-                     padding:36px 40px 32px;">
-            <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:.09em;
-                      text-transform:uppercase;color:#8e8e93;">NativeCode</p>
-            <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;
-                       letter-spacing:-.4px;line-height:1.25;">
-              ${subject.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
+          <td style="background:#6366f1;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+        </tr>
+
+        <!-- Header -->
+        <tr>
+          <td style="padding:36px 52px 28px;">
+            <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.1em;
+                      text-transform:uppercase;color:#8e8e93;">
+              NativeCode Finance
+            </p>
+            <h1 style="margin:0;font-size:26px;font-weight:700;color:#1d1d1f;
+                       letter-spacing:-.5px;line-height:1.25;">
+              ${safeSubject}
             </h1>
           </td>
         </tr>
 
+        <!-- Divider -->
+        <tr>
+          <td style="padding:0 52px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+              <tr><td style="border-top:1px solid #e5e5ea;"></td></tr>
+            </table>
+          </td>
+        </tr>
 
         <!-- Body -->
         <tr>
-          <td style="padding:36px 40px 32px;">
-            <p style="margin:0 0 20px;font-size:15.5px;line-height:1.75;
-                      color:#1d1d1f;font-weight:400;">
+          <td style="padding:28px 52px 36px;">
+            <p style="margin:0;font-size:15px;line-height:1.8;color:#3a3a3c;font-weight:400;">
               ${safeBody}
             </p>
+          </td>
+        </tr>
 
-            <!-- Divider -->
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-                   style="margin:28px 0;">
+        <!-- Divider -->
+        <tr>
+          <td style="padding:0 52px;">
+            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
               <tr><td style="border-top:1px solid #e5e5ea;"></td></tr>
             </table>
+          </td>
+        </tr>
 
-            <!-- Pie de mensaje -->
+        <!-- Contact -->
+        <tr>
+          <td style="padding:24px 52px 32px;">
             <p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">
-              Este mensaje fue enviado por NativeCode.<br>
               Para consultas, puede contactarnos en
               <a href="mailto:ingenieria.software@nativecode.cl"
                  style="color:#6366f1;text-decoration:none;font-weight:500;">
@@ -321,21 +341,10 @@ export default class SynapseController {
 
         <!-- Footer -->
         <tr>
-          <td style="background:#f5f5f7;padding:20px 40px;border-top:1px solid #e5e5ea;">
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-              <tr>
-                <td>
-                  <span style="font-size:12px;color:#8e8e93;font-weight:500;">
-                    © ${year} NativeCode · ingenieria.software@nativecode.cl
-                  </span>
-                </td>
-                <td align="right">
-                  <span style="font-size:11px;color:#aeaeb2;letter-spacing:.03em;">
-                    +56 9 3291 2943
-                  </span>
-                </td>
-              </tr>
-            </table>
+          <td style="background:#f9f9fb;border-top:1px solid #e5e5ea;padding:18px 52px;">
+            <p style="margin:0;font-size:12px;color:#aeaeb2;text-align:center;letter-spacing:.01em;">
+              NativeCode Finance &nbsp;·&nbsp; Correo oficial &nbsp;·&nbsp; © ${year}
+            </p>
           </td>
         </tr>
 

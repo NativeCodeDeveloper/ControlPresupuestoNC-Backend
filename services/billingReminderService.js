@@ -70,51 +70,70 @@ function buildEmailHtml({ proyecto, stage }) {
     const montoStr = formatearMonto(proyecto.monto_acordado);
     const fechaStr = formatearFecha(proyecto.fecha_proximo_pago);
 
+    const F = "-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif";
     return `<!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
-<body style="margin:0;padding:0;background:#f5f5f7;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px;">
+<body style="margin:0;padding:0;background:#f2f2f7;font-family:${F};">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f2f2f7;padding:44px 16px 56px;">
   <tr><td align="center">
-    <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <table width="100%" cellpadding="0" cellspacing="0"
+           style="max-width:660px;width:100%;background:#ffffff;border-radius:16px;
+                  overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.07);">
 
-      <tr><td style="padding:36px 40px 28px;">
-        <p style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#86868b;letter-spacing:1px;text-transform:uppercase;">${stage.etiqueta}</p>
-        <h1 style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:26px;font-weight:600;color:#1d1d1f;line-height:1.2;">${stage.titulo}</h1>
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;color:#6e6e73;line-height:1.5;">${stage.mensaje}</p>
+      <!-- Accent line -->
+      <tr><td style="background:#6366f1;height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+
+      <!-- Header -->
+      <tr><td style="padding:36px 52px 28px;">
+        <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.1em;
+                  text-transform:uppercase;color:#8e8e93;">${stage.etiqueta}</p>
+        <h1 style="margin:0 0 10px;font-size:26px;font-weight:700;color:#1d1d1f;
+                   letter-spacing:-.5px;line-height:1.2;">${stage.titulo}</h1>
+        <p style="margin:0;font-size:15px;color:#6e6e73;line-height:1.6;">${stage.mensaje}</p>
       </td></tr>
 
-      <tr><td style="padding:0 40px;"><div style="height:1px;background:#f2f2f7;"></div></td></tr>
+      <!-- Divider -->
+      <tr><td style="padding:0 52px;"><div style="height:1px;background:#e5e5ea;"></div></td></tr>
 
-      <tr><td style="padding:24px 40px;">
+      <!-- Data rows -->
+      <tr><td style="padding:24px 52px;">
         <table width="100%" cellpadding="0" cellspacing="0">
           <tr>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Cliente</td>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${proyecto.nombre_cliente || '—'}</td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:14px;color:#8e8e93;">Cliente</td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${proyecto.nombre_cliente || '—'}</td>
           </tr>
           <tr>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Proyecto</td>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${proyecto.nombre || '—'} <span style="color:#86868b;font-weight:400;font-size:13px;">(${proyecto.codigo_interno || ''})</span></td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:14px;color:#8e8e93;">Proyecto</td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">
+              ${proyecto.nombre || '—'} <span style="color:#8e8e93;font-weight:400;font-size:13px;">(${proyecto.codigo_interno || ''})</span>
+            </td>
           </tr>
           <tr>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Monto</td>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;color:#1d1d1f;font-weight:600;text-align:right;">${montoStr}</td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:14px;color:#8e8e93;">Monto</td>
+            <td style="padding:11px 0;border-bottom:1px solid #f2f2f7;font-size:15px;color:#1d1d1f;font-weight:700;text-align:right;">${montoStr}</td>
           </tr>
           <tr>
-            <td style="padding:10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Vencimiento</td>
-            <td style="padding:10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${fechaStr}</td>
+            <td style="padding:11px 0;font-size:14px;color:#8e8e93;">Vencimiento</td>
+            <td style="padding:11px 0;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${fechaStr}</td>
           </tr>
         </table>
       </td></tr>
 
-      <tr><td style="padding:0 40px 36px;">
+      <!-- Action box -->
+      <tr><td style="padding:0 52px 36px;">
         <div style="background:#f5f5f7;border-radius:10px;padding:16px 20px;">
-          <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#3a3a3c;line-height:1.6;"><strong>Acción:</strong> ${stage.accion}</p>
+          <p style="margin:0;font-size:14px;color:#3a3a3c;line-height:1.65;">
+            <strong>Acción:</strong> ${stage.accion}
+          </p>
         </div>
       </td></tr>
 
-      <tr><td style="border-top:1px solid #f2f2f7;padding:20px 40px;text-align:center;">
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#86868b;">NativeCode Finance · Recordatorio automático</p>
+      <!-- Footer -->
+      <tr><td style="background:#f9f9fb;border-top:1px solid #e5e5ea;padding:18px 52px;text-align:center;">
+        <p style="margin:0;font-size:12px;color:#aeaeb2;letter-spacing:.01em;">
+          NativeCode Finance &nbsp;·&nbsp; Recordatorio automático
+        </p>
       </td></tr>
 
     </table>
