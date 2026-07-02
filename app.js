@@ -11,6 +11,7 @@ import sociosRoutes from "./view/sociosRoutes.js";
 import synapseRoutes from "./view/synapseRoutes.js";
 import workspaceRoutes from "./view/workspaceRoutes.js";
 import adjuntosRoutes from "./view/adjuntosRoutes.js";
+import adminRoutes from "./view/adminRoutes.js";
 import proyectosRoutes from "./view/proyectosRoutes.js";
 import costosFixosRoutes from "./view/costosFixosRoutes.js";
 import costosVariablesRoutes from "./view/costosVariablesRoutes.js";
@@ -156,6 +157,7 @@ app.use("/api/inversiones", requireAuth, inversionesRoutes);
 app.use("/api/synapse", requireAuth, synapseRoutes);
 app.use("/api/workspace", requireAuth, workspaceRoutes);
 app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
+app.use("/api/admin",   requireAuth, adminRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
