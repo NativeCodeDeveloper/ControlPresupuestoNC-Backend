@@ -1,7 +1,8 @@
-import * as Adjuntos from '../model/Adjuntos.js';
-import { UPLOADS_DIR } from '../config/uploadConfig.js';
+import { PutObjectCommand, GetObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
+import { v4 as uuidv4 } from 'uuid';
 import path from 'path';
-import fs from 'fs';
+import * as Adjuntos from '../model/Adjuntos.js';
+import { r2Client, R2_BUCKET } from '../config/r2Config.js';
 
 const ENTIDADES_VALIDAS = new Set(['tarea', 'team', 'iniciativa']);
 
@@ -10,26 +11,33 @@ export default class AdjuntosController {
     static async upload(req, res) {
         try {
             const { entidad, id_entidad } = req.body;
-            if (!ENTIDADES_VALIDAS.has(entidad)) {
-                if (req.file) fs.unlinkSync(path.join(UPLOADS_DIR, req.file.filename));
+            if (!ENTIDADES_VALIDAS.has(entidad))
                 return res.status(400).json({ error: 'Entidad inválida' });
-            }
-            if (!req.file) return res.status(400).json({ error: 'No se recibió ningún archivo' });
+            if (!req.file)
+                return res.status(400).json({ error: 'No se recibió ningún archivo' });
+
+            const ext = path.extname(req.file.originalname).toLowerCase();
+            const r2Key = `adjuntos/${uuidv4()}${ext}`;
+
+            await r2Client.send(new PutObjectCommand({
+                Bucket:             R2_BUCKET,
+                Key:                r2Key,
+                Body:               req.file.buffer,
+                ContentType:        req.file.mimetype,
+                ContentDisposition: `attachment; filename="${encodeURIComponent(req.file.originalname)}"`,
+            }));
 
             const adj = await Adjuntos.createAdjunto({
                 entidad,
-                id_entidad: parseInt(id_entidad),
+                id_entidad:      parseInt(id_entidad),
                 nombre_original: req.file.originalname,
-                nombre_archivo:  req.file.filename,
+                nombre_archivo:  r2Key,
                 mimetype:        req.file.mimetype,
                 tamanio:         req.file.size,
             });
+
             res.status(201).json(adj);
         } catch (e) {
-            if (req.file) {
-                const fp = path.join(UPLOADS_DIR, req.file.filename);
-                if (fs.existsSync(fp)) fs.unlinkSync(fp);
-            }
             console.error('[ADJUNTOS] upload:', e.message);
             res.status(500).json({ error: 'Error al subir archivo' });
         }
@@ -38,9 +46,9 @@ export default class AdjuntosController {
     static async list(req, res) {
         try {
             const { entidad, id } = req.params;
-            if (!ENTIDADES_VALIDAS.has(entidad)) return res.status(400).json({ error: 'Entidad inválida' });
-            const data = await Adjuntos.getAdjuntos(entidad, id);
-            res.json(data);
+            if (!ENTIDADES_VALIDAS.has(entidad))
+                return res.status(400).json({ error: 'Entidad inválida' });
+            res.json(await Adjuntos.getAdjuntos(entidad, id));
         } catch (e) {
             console.error('[ADJUNTOS] list:', e.message);
             res.status(500).json({ error: 'Error al listar adjuntos' });
@@ -51,11 +59,17 @@ export default class AdjuntosController {
         try {
             const adj = await Adjuntos.getAdjunto(req.params.id);
             if (!adj) return res.status(404).json({ error: 'Archivo no encontrado' });
-            const filePath = path.join(UPLOADS_DIR, adj.nombre_archivo);
-            if (!fs.existsSync(filePath)) return res.status(404).json({ error: 'Archivo no encontrado en disco' });
-            res.setHeader('Content-Disposition', `attachment; filename="${encodeURIComponent(adj.nombre_original)}"`);
+
+            const { Body } = await r2Client.send(new GetObjectCommand({
+                Bucket: R2_BUCKET,
+                Key:    adj.nombre_archivo,
+            }));
+
             res.setHeader('Content-Type', adj.mimetype);
-            res.sendFile(path.resolve(filePath));
+            res.setHeader('Content-Disposition',
+                `attachment; filename="${encodeURIComponent(adj.nombre_original)}"`);
+
+            Body.pipe(res);
         } catch (e) {
             console.error('[ADJUNTOS] download:', e.message);
             res.status(500).json({ error: 'Error al descargar archivo' });

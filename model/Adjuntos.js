@@ -1,7 +1,6 @@
+import { DeleteObjectCommand } from '@aws-sdk/client-s3';
 import DataBase from '../config/Database.js';
-import fs from 'fs';
-import path from 'path';
-import { UPLOADS_DIR } from '../config/uploadConfig.js';
+import { r2Client, R2_BUCKET } from '../config/r2Config.js';
 
 const db = () => DataBase.getInstance();
 
@@ -32,10 +31,14 @@ export async function getAdjunto(id) {
 export async function deleteAdjunto(id) {
     const adj = await getAdjunto(id);
     if (!adj) return false;
-    // Soft delete en BD
+
     await db().ejecutarQuery(`UPDATE adjuntos SET activo = 0 WHERE id_adjunto = ?`, [id]);
-    // Borrar físicamente del disco
-    const filePath = path.join(UPLOADS_DIR, adj.nombre_archivo);
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+
+    try {
+        await r2Client.send(new DeleteObjectCommand({ Bucket: R2_BUCKET, Key: adj.nombre_archivo }));
+    } catch (e) {
+        console.warn('[ADJUNTOS] No se pudo borrar de R2:', adj.nombre_archivo, e.message);
+    }
+
     return true;
 }
