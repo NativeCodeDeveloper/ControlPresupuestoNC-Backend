@@ -307,6 +307,136 @@ export async function deleteTeam(id) {
     await db().ejecutarQuery(`UPDATE synapse_teams SET activo = 0 WHERE id_team = ?`, [id]);
 }
 
+// ── Production Cockpit ────────────────────────────────────────────────────────
+
+export async function getCockpitData({ mes, anio } = {}) {
+    const conn = db();
+
+    const colRows = await conn.ejecutarQuery(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyectos'`,
+        []
+    );
+    const colSet = new Set(colRows.map(r => r.COLUMN_NAME));
+
+    const idCol     = colSet.has('id_proyecto')        ? 'id_proyecto'        : 'id';
+    const estadoCol = colSet.has('id_estado_proyecto') ? 'id_estado_proyecto' : 'estado_proyecto_id';
+    const estadoPk  = 'id_estado_proyecto';
+
+    const hasServidor      = colSet.has('servidor');
+    const hasUrlFront      = colSet.has('url_front');
+    const hasCockpitObs    = colSet.has('cockpit_observaciones');
+    const hasCiclo         = colSet.has('ciclo_facturacion');
+    const hasProximoPago   = colSet.has('fecha_proximo_pago');
+    const hasCodigo        = colSet.has('codigo_interno');
+
+    const now = new Date();
+    const m   = mes  ? Number(mes)  : now.getMonth() + 1;
+    const y   = anio ? Number(anio) : now.getFullYear();
+
+    const rows = await conn.ejecutarQuery(`
+        SELECT
+            p.${idCol}                                         AS id_proyecto,
+            ${hasCodigo        ? 'p.codigo_interno,'          : "'' AS codigo_interno,"}
+            p.nombre,
+            p.nombre_cliente,
+            COALESCE(p.email_cliente, '')                      AS email_cliente,
+            COALESCE(p.telefono_cliente, '')                   AS telefono_cliente,
+            ${hasCiclo         ? 'p.ciclo_facturacion,'       : "'Unico' AS ciclo_facturacion,"}
+            ${hasProximoPago   ? 'p.fecha_proximo_pago,'      : 'NULL AS fecha_proximo_pago,'}
+            COALESCE(p.monto_acordado, 0)                      AS monto_acordado,
+            COALESCE(p.monto_pagado, 0)                        AS monto_pagado,
+            ${hasServidor      ? 'p.servidor,'                : "'' AS servidor,"}
+            ${hasUrlFront      ? 'p.url_front,'               : "'' AS url_front,"}
+            ${hasCockpitObs    ? 'p.cockpit_observaciones,'   : 'NULL AS cockpit_observaciones,'}
+            ep.nombre                                          AS estado_nombre,
+            ep.color_hex                                       AS estado_color,
+            COALESCE(pm.total, 0)                              AS total_pagado_mes
+        FROM proyectos p
+        LEFT JOIN estados_proyectos ep ON p.${estadoCol} = ep.${estadoPk}
+        LEFT JOIN (
+            SELECT id_proyecto, SUM(monto) AS total
+            FROM proyecto_pagos
+            WHERE MONTH(fecha_pago) = ? AND YEAR(fecha_pago) = ?
+            GROUP BY id_proyecto
+        ) pm ON p.${idCol} = pm.id_proyecto
+        WHERE p.activo = 1
+          AND (p.observaciones IS NULL OR p.observaciones NOT LIKE '[ELIMINADO]#%')
+        ORDER BY p.nombre_cliente ASC
+    `, [m, y]);
+
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const proyectos = (rows || []).map(p => {
+        let estado_alerta_pago = null;
+        let dias_para_vencer   = null;
+
+        if (p.ciclo_facturacion && p.ciclo_facturacion !== 'Unico' && p.fecha_proximo_pago) {
+            const vence = new Date(p.fecha_proximo_pago);
+            vence.setHours(0, 0, 0, 0);
+            const diff = Math.floor((vence - today) / 86400000);
+            dias_para_vencer   = diff;
+            if (diff > 7)       estado_alerta_pago = 'verde';
+            else if (diff >= 0) estado_alerta_pago = 'naranja';
+            else                estado_alerta_pago = 'rojo';
+        }
+
+        return { ...p, estado_alerta_pago, dias_para_vencer };
+    });
+
+    const totRes = await conn.ejecutarQuery(`
+        SELECT COALESCE(SUM(pp.monto), 0) AS total_acumulado
+        FROM proyecto_pagos pp
+        INNER JOIN proyectos p ON pp.id_proyecto = p.${idCol}
+        WHERE MONTH(pp.fecha_pago) = ? AND YEAR(pp.fecha_pago) = ?
+          AND p.activo = 1
+    `, [m, y]);
+
+    return {
+        proyectos,
+        total_acumulado_mes: Number(totRes[0]?.total_acumulado || 0),
+        mes: m,
+        anio: y,
+    };
+}
+
+export async function updateCockpitRow(id, { servidor, url_front, cockpit_observaciones }) {
+    const conn = db();
+
+    const colRows = await conn.ejecutarQuery(
+        `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'proyectos'
+         AND COLUMN_NAME IN ('id_proyecto', 'id', 'servidor', 'url_front', 'cockpit_observaciones')`,
+        []
+    );
+    const colSet = new Set(colRows.map(r => r.COLUMN_NAME));
+    const idCol  = colSet.has('id_proyecto') ? 'id_proyecto' : 'id';
+
+    const fields = [];
+    const vals   = [];
+
+    if (servidor !== undefined && colSet.has('servidor')) {
+        fields.push('servidor = ?');
+        vals.push(servidor || null);
+    }
+    if (url_front !== undefined && colSet.has('url_front')) {
+        fields.push('url_front = ?');
+        vals.push(url_front || null);
+    }
+    if (cockpit_observaciones !== undefined && colSet.has('cockpit_observaciones')) {
+        fields.push('cockpit_observaciones = ?');
+        vals.push(cockpit_observaciones || null);
+    }
+
+    if (!fields.length) return;
+    vals.push(id);
+    await conn.ejecutarQuery(
+        `UPDATE proyectos SET ${fields.join(', ')} WHERE ${idCol} = ?`,
+        vals
+    );
+}
+
 // ── Meta: referencias para formularios ───────────────────────────────────────
 
 export async function getProyectosActivos() {

@@ -1,4 +1,5 @@
 import * as Synapse from '../model/Synapse.js';
+import ConfiguracionFinanciera from '../model/ConfiguracionFinanciera.js';
 
 const err = (res, e, status = 500) => {
     console.error('[SYNAPSE]', e?.message || e);
@@ -196,6 +197,41 @@ export default class SynapseController {
     static async getSociosParaSynapse(req, res) {
         try {
             res.json(await Synapse.getSociosActivos());
+        } catch (e) { err(res, e); }
+    }
+
+    // ── Production Cockpit ─────────────────────────────────────────────────────
+
+    static async getCockpit(req, res) {
+        try {
+            const { mes, anio } = req.query;
+            const data = await Synapse.getCockpitData({ mes, anio });
+            res.json(data);
+        } catch (e) { err(res, e); }
+    }
+
+    static async updateCockpit(req, res) {
+        try {
+            const { id } = req.params;
+            const { servidor, url_front, cockpit_observaciones } = req.body;
+            await Synapse.updateCockpitRow(id, { servidor, url_front, cockpit_observaciones });
+            res.json({ ok: true });
+        } catch (e) { err(res, e); }
+    }
+
+    static async getCockpitConfig(req, res) {
+        try {
+            const config = new ConfiguracionFinanciera();
+            res.json(await config.getCockpitConfig());
+        } catch (e) { err(res, e); }
+    }
+
+    static async updateCockpitConfig(req, res) {
+        try {
+            const { meta_mensual, cockpit_columnas } = req.body;
+            const config = new ConfiguracionFinanciera();
+            await config.updateCockpitConfig({ meta_mensual, cockpit_columnas });
+            res.json({ ok: true, data: await config.getCockpitConfig() });
         } catch (e) { err(res, e); }
     }
 }

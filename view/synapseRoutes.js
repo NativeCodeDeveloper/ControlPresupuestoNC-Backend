@@ -39,4 +39,10 @@ router.delete('/teams/:id',         SynapseController.deleteTeam);
 router.get('/meta/proyectos',       SynapseController.getProyectosParaSynapse);
 router.get('/meta/socios',          SynapseController.getSociosParaSynapse);
 
+// Production Cockpit
+router.get('/cockpit/config',       SynapseController.getCockpitConfig);
+router.put('/cockpit/config',       SynapseController.updateCockpitConfig);
+router.get('/cockpit',              SynapseController.getCockpit);
+router.patch('/cockpit/:id',        SynapseController.updateCockpit);
+
 export default router;
