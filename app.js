@@ -10,6 +10,7 @@ import { requireAuth } from "./middleware/requireAuth.js";
 import sociosRoutes from "./view/sociosRoutes.js";
 import synapseRoutes from "./view/synapseRoutes.js";
 import workspaceRoutes from "./view/workspaceRoutes.js";
+import adjuntosRoutes from "./view/adjuntosRoutes.js";
 import proyectosRoutes from "./view/proyectosRoutes.js";
 import costosFixosRoutes from "./view/costosFixosRoutes.js";
 import costosVariablesRoutes from "./view/costosVariablesRoutes.js";
@@ -55,7 +56,7 @@ app.use(rateLimit({
     max: 500 // Limit each IP to 500 requests per windowMs
 }));
 app.use(morgan(process.env.NODE_ENV === "production" ? "combined" : "dev"));
-app.use(express.json({ limit: "1mb" }));
+app.use(express.json({ limit: "2mb" }));
 app.use(cookieParser());
 const ENABLE_REMINDERS_CRON = String(process.env.ENABLE_REMINDERS_CRON ?? "true").toLowerCase() === "true";
 
@@ -154,6 +155,7 @@ app.use("/api/finanzas", requireAuth, finanzasRoutes);
 app.use("/api/inversiones", requireAuth, inversionesRoutes);
 app.use("/api/synapse", requireAuth, synapseRoutes);
 app.use("/api/workspace", requireAuth, workspaceRoutes);
+app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
