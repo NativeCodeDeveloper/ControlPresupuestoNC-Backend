@@ -375,18 +375,13 @@ export default class Proyectos {
                     const mesesPorCiclo = { Mensual: 1, Trimestral: 3, Anual: 12 };
                     const paso = mesesPorCiclo[proy.ciclo_facturacion] || 0;
                     if (paso > 0) {
-                        const paymentDate = new Date(fecha_pago);
                         const dueDate = new Date(proy.fecha_proximo_pago);
-                        // Solo avanzar si el pago ocurrió en la fecha de vencimiento o después.
-                        // Si el cliente paga antes del vencimiento, el próximo ciclo no cambia.
-                        if (paymentDate >= dueDate) {
-                            dueDate.setUTCMonth(dueDate.getUTCMonth() + paso);
-                            const nextDate = dueDate.toISOString().slice(0, 10);
-                            await conexion.ejecutarQuery(
-                                `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
-                                [nextDate, proyecto_id]
-                            );
-                        }
+                        dueDate.setUTCMonth(dueDate.getUTCMonth() + paso);
+                        const nextDate = dueDate.toISOString().slice(0, 10);
+                        await conexion.ejecutarQuery(
+                            `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
+                            [nextDate, proyecto_id]
+                        );
                     }
                 }
             }
