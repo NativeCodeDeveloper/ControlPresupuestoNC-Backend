@@ -162,8 +162,8 @@ async function enviarCorreoRecordatorio({ email, nombrePaciente, apellidoPacient
           <td colspan="2" style="padding-top:6px;">
             <span style="font-size:11px;color:#aeaeb2;">
               Soporte técnico:
-              <a href="mailto:ingenieria@softwarenativecode.cl"
-                 style="color:#8e8e93;text-decoration:none;">ingenieria@softwarenativecode.cl</a>
+              <a href="mailto:ingenieria.software@nativecode.cl"
+                 style="color:#8e8e93;text-decoration:none;">ingenieria.software@nativecode.cl</a>
               · +56 9 3291 2943
             </span>
           </td>

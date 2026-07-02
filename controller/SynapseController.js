@@ -307,9 +307,9 @@ export default class SynapseController {
               Este mensaje fue enviado desde el
               <strong style="color:#3a3a3c;">Production Cockpit</strong> de NativeCode.<br>
               Para consultas, puede contactarnos en
-              <a href="mailto:ingenieria@softwarenativecode.cl"
+              <a href="mailto:ingenieria.software@nativecode.cl"
                  style="color:#6366f1;text-decoration:none;font-weight:500;">
-                ingenieria@softwarenativecode.cl
+                ingenieria.software@nativecode.cl
               </a>
               o al <strong style="color:#3a3a3c;">+56 9 3291 2943</strong>.
             </p>
@@ -323,7 +323,7 @@ export default class SynapseController {
               <tr>
                 <td>
                   <span style="font-size:12px;color:#8e8e93;font-weight:500;">
-                    © ${year} NativeCode · ingenieria@softwarenativecode.cl
+                    © ${year} NativeCode · ingenieria.software@nativecode.cl
                   </span>
                 </td>
                 <td align="right">

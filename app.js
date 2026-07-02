@@ -259,17 +259,7 @@ app.listen(PORT, () => {
         billingHandle.unref();
     }
 
-    // CRON CLIENT: Recordatorios de pago al cliente — cada 6 horas
-    // Las columnas rem_cliente_* evitan duplicados por ciclo de facturación
-    const clientHandle = setInterval(() => {
-        ejecutarRecordatoriosCliente().catch((err) => {
-            console.error('[CLIENT-REM] Error inesperado en cron:', err?.message || err);
-        });
-    }, 6 * 60 * 60 * 1000);
-
-    if (typeof clientHandle.unref === "function") {
-        clientHandle.unref();
-    }
+    // CRON CLIENT: desactivado — los avisos al cliente se envían manualmente desde el cockpit
 
     // Ejecutar billing una vez al iniciar para no esperar 6 horas
     setTimeout(() => {
@@ -277,13 +267,6 @@ app.listen(PORT, () => {
             console.error('[BILLING] Error en primera ejecución:', err?.message || err);
         });
     }, 15000);
-
-    // Ejecutar recordatorios cliente al iniciar, con offset para no solapar con billing
-    setTimeout(() => {
-        ejecutarRecordatoriosCliente().catch((err) => {
-            console.error('[CLIENT-REM] Error en primera ejecución:', err?.message || err);
-        });
-    }, 20000);
 
     // Ejecutar una vez al iniciar el servidor
     setTimeout(() => {
