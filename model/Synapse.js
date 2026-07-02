@@ -393,9 +393,17 @@ export async function getCockpitData({ mes, anio } = {}) {
           AND p.activo = 1
     `, [m, y]);
 
+    const totGenRes = await conn.ejecutarQuery(`
+        SELECT COALESCE(SUM(pp.monto), 0) AS total_general
+        FROM proyecto_pagos pp
+        INNER JOIN proyectos p ON pp.id_proyecto = p.${idCol}
+        WHERE p.activo = 1
+    `, []);
+
     return {
         proyectos,
         total_acumulado_mes: Number(totRes[0]?.total_acumulado || 0),
+        total_general:       Number(totGenRes[0]?.total_general || 0),
         mes: m,
         anio: y,
     };
