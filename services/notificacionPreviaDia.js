@@ -52,81 +52,89 @@ async function enviarCorreoRecordatorio({ email, nombrePaciente, apellidoPacient
 
   const clinicaNombre = fromName;
 
+  const year = new Date().getFullYear();
+
   const html = `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+</head>
 <body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 16px;">
+
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f5f5f7;padding:48px 16px;">
 <tr><td align="center">
-<table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+       style="max-width:580px;background:#ffffff;border-radius:18px;
+              box-shadow:0 4px 24px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);overflow:hidden;">
 
   <!-- Header oscuro -->
   <tr>
-    <td style="background:linear-gradient(160deg,#1c1c1e 0%,#2c2c2e 100%);border-radius:18px 18px 0 0;padding:36px 40px 30px;">
-      <p style="margin:0 0 4px 0;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#8e8e93;">${clinicaNombre}</p>
-      <h1 style="margin:0 0 10px 0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.4px;">Recordatorio de Cita</h1>
-      <p style="margin:0;font-size:14px;color:#aeaeb2;">Faltan <strong style="color:#a78bfa;">${horasRestantes}</strong> para tu cita agendada</p>
+    <td style="background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);padding:36px 40px 32px;">
+      <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;color:#8e8e93;">${clinicaNombre}</p>
+      <h1 style="margin:0 0 10px 0;font-size:24px;font-weight:700;color:#ffffff;letter-spacing:-.4px;line-height:1.25;">Recordatorio de Cita</h1>
+      <p style="margin:0;font-size:14px;color:#aeaeb2;">Faltan <strong style="color:#a78bfa;">${horasRestantes}</strong> para su cita agendada.</p>
     </td>
   </tr>
 
-  <!-- Línea acento violeta -->
-  <tr><td style="height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6,#a78bfa);"></td></tr>
-
-  <!-- Card blanco -->
+  <!-- Cuerpo -->
   <tr>
-    <td style="background:#ffffff;padding:36px 40px 32px;border-radius:0 0 18px 18px;border:1px solid #e5e5ea;border-top:none;">
+    <td style="padding:36px 40px 32px;">
 
-      <p style="margin:0 0 6px 0;font-size:16px;font-weight:600;color:#1c1c1e;">
-        Hola, ${nombrePaciente}${apellidoPaciente ? ' ' + apellidoPaciente : ''} 👋
+      <p style="margin:0 0 6px 0;font-size:15px;font-weight:600;color:#1c1c1e;">
+        Estimado/a ${nombrePaciente}${apellidoPaciente ? ' ' + apellidoPaciente : ''}:
       </p>
-      <p style="margin:0 0 28px 0;font-size:14px;color:#6b6b6b;line-height:1.6;">
-        Junto con saludarle, le recordamos que tiene una cita programada. Aquí el detalle:
+      <p style="margin:0 0 28px 0;font-size:14px;color:#3a3a3c;line-height:1.7;">
+        Junto con saludarle, le informamos que tiene una cita programada con el siguiente detalle:
       </p>
 
       <!-- Detalle cita -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;border-radius:12px;overflow:hidden;margin:0 0 24px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+             style="background:#f5f5f7;border-radius:12px;overflow:hidden;margin:0 0 24px 0;">
         <tr>
           <td style="padding:16px 20px;border-bottom:1px solid #e5e5ea;">
-            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Fecha</span><br>
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#8e8e93;">Fecha</span><br>
             <span style="font-size:15px;font-weight:600;color:#1c1c1e;margin-top:4px;display:block;">${fecha}</span>
           </td>
         </tr>
         <tr>
           <td style="padding:16px 20px;border-bottom:1px solid #e5e5ea;">
-            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Hora</span><br>
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#8e8e93;">Hora</span><br>
             <span style="font-size:15px;font-weight:600;color:#1c1c1e;margin-top:4px;display:block;">${hora}</span>
           </td>
         </tr>
         <tr>
           <td style="padding:16px 20px;">
-            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Lugar</span><br>
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.07em;color:#8e8e93;">Lugar</span><br>
             <span style="font-size:14px;color:#1c1c1e;margin-top:4px;display:block;line-height:1.5;">${DIRECCION_CLINICA}</span>
           </td>
         </tr>
       </table>
 
       <!-- Aviso -->
-      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0ff;border-radius:10px;margin:0 0 28px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+             style="background:#f5f5f7;border-radius:10px;margin:0 0 28px 0;">
         <tr>
-          <td style="padding:16px 20px;border-left:3px solid #7c3aed;border-radius:0 10px 10px 0;">
-            <p style="margin:0;font-size:13px;color:#4c1d95;line-height:1.6;">
-              <strong>Importante:</strong> Si no puede asistir, le pedimos avisarnos con anticipación para reprogramar su cita y liberar el cupo para otro paciente.
+          <td style="padding:16px 20px;border-left:3px solid #3a3a3c;">
+            <p style="margin:0;font-size:13px;color:#3a3a3c;line-height:1.7;">
+              <strong>Aviso importante:</strong> En caso de no poder asistir, le solicitamos informarnos con anticipación para poder reprogramar su hora y liberar el cupo para otro paciente.
             </p>
           </td>
         </tr>
       </table>
 
-      <p style="margin:0 0 24px 0;font-size:14px;color:#6b6b6b;line-height:1.5;">
-        Quedamos atentos/as ante cualquier consulta o duda.
+      <p style="margin:0 0 28px 0;font-size:14px;color:#3a3a3c;line-height:1.7;">
+        Quedamos a su disposición para cualquier consulta o requerimiento.
       </p>
 
       <!-- Firma -->
-      <table cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e5ea;padding-top:20px;width:100%;">
+      <table cellpadding="0" cellspacing="0" role="presentation" style="border-top:1px solid #e5e5ea;padding-top:20px;width:100%;">
         <tr>
           <td>
-            <p style="margin:0;font-size:13px;color:#8e8e93;">Con cariño,</p>
-            <p style="margin:4px 0 0 0;font-size:15px;font-weight:700;color:#1c1c1e;">${clinicaNombre}</p>
-            <p style="margin:3px 0 0 0;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:0.05em;">Powered by NativeCode</p>
+            <p style="margin:0 0 2px 0;font-size:13px;color:#8e8e93;">Atentamente,</p>
+            <p style="margin:0 0 1px 0;font-size:15px;font-weight:700;color:#1c1c1e;">${clinicaNombre}</p>
+            <p style="margin:0;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:.04em;">Powered by NativeCode</p>
           </td>
         </tr>
       </table>
@@ -136,17 +144,38 @@ async function enviarCorreoRecordatorio({ email, nombrePaciente, apellidoPacient
 
   <!-- Footer -->
   <tr>
-    <td style="padding:20px 40px;text-align:center;">
-      <p style="margin:0;font-size:11px;color:#8e8e93;line-height:1.6;">
-        Este es un mensaje automático del sistema de agendamiento de ${clinicaNombre}.<br>
-        Por favor no responda a este correo.
-      </p>
+    <td style="background:#f5f5f7;padding:20px 40px;border-top:1px solid #e5e5ea;">
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
+        <tr>
+          <td>
+            <span style="font-size:12px;color:#8e8e93;font-weight:500;">
+              © ${year} ${clinicaNombre}
+            </span>
+          </td>
+          <td align="right">
+            <span style="font-size:11px;color:#aeaeb2;">
+              Mensaje automático · No responder
+            </span>
+          </td>
+        </tr>
+        <tr>
+          <td colspan="2" style="padding-top:6px;">
+            <span style="font-size:11px;color:#aeaeb2;">
+              Soporte técnico:
+              <a href="mailto:ingenieria@softwarenativecode.cl"
+                 style="color:#8e8e93;text-decoration:none;">ingenieria@softwarenativecode.cl</a>
+              · +56 9 3291 2943
+            </span>
+          </td>
+        </tr>
+      </table>
     </td>
   </tr>
 
 </table>
 </td></tr>
 </table>
+
 </body>
 </html>`;
 
