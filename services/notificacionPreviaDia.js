@@ -50,107 +50,123 @@ async function enviarCorreoRecordatorio({ email, nombrePaciente, apellidoPacient
   const horasRestantes = tipoRecordatorio === '12h' ? '12 horas' : '6 horas';
   const subject = `Recordatorio de cita programada - ${horasRestantes} restantes`;
 
-  const html = `
-    <div style="font-family: Arial, sans-serif; color: #222; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 12px; overflow: hidden;">
-      
-      <!-- Header -->
-      <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); padding: 30px 20px; text-align: center;">
-        <h1 style="color: white; margin: 0; font-size: 24px;">⏰ Recordatorio de Cita</h1>
-        <p style="color: rgba(255,255,255,0.9); margin: 10px 0 0 0; font-size: 14px;">Faltan ${horasRestantes} para tu cita</p>
-      </div>
+  const clinicaNombre = fromName;
 
-      <!-- Body -->
-      <div style="padding: 30px 25px; background: #ffffff;">
-        <p style="font-size: 16px; color: #374151; margin: 0 0 20px 0;">
-          Estimado/a <b>${nombrePaciente} ${apellidoPaciente || ''}</b>:
-        </p>
-        
-        <p style="font-size: 15px; color: #4b5563; line-height: 1.6; margin: 0 0 25px 0;">
-          Junto con saludarle, queremos recordarle que mantiene una cita agendada según el siguiente detalle:
-        </p>
+  const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#f5f5f7;font-family:-apple-system,BlinkMacSystemFont,'SF Pro Text','Helvetica Neue',Arial,sans-serif;">
+<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 16px;">
+<tr><td align="center">
+<table width="100%" cellpadding="0" cellspacing="0" style="max-width:580px;">
 
-        <!-- Detalle de la cita -->
-        <div style="background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 10px; padding: 20px; margin: 0 0 25px 0;">
-          <table style="width: 100%; border-collapse: collapse;">
-            <tr>
-              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-size: 20px;">📅</span>
-                <span style="color: #6b7280; margin-left: 10px;">Fecha:</span>
-              </td>
-              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">
-                <b style="color: #111827;">${fecha}</b>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb;">
-                <span style="font-size: 20px;">⏰</span>
-                <span style="color: #6b7280; margin-left: 10px;">Hora:</span>
-              </td>
-              <td style="padding: 10px 0; border-bottom: 1px solid #e5e7eb; text-align: right;">
-                <b style="color: #111827;">${hora}</b>
-              </td>
-            </tr>
-            <tr>
-              <td style="padding: 10px 0;">
-                <span style="font-size: 20px;">📍</span>
-                <span style="color: #6b7280; margin-left: 10px;">Lugar:</span>
-              </td>
-              <td style="padding: 10px 0; text-align: right;">
-                <b style="color: #111827; font-size: 13px;">${DIRECCION_CLINICA}</b>
-              </td>
-            </tr>
-          </table>
-        </div>
+  <!-- Header oscuro -->
+  <tr>
+    <td style="background:linear-gradient(160deg,#1c1c1e 0%,#2c2c2e 100%);border-radius:18px 18px 0 0;padding:36px 40px 30px;">
+      <p style="margin:0 0 4px 0;font-size:11px;font-weight:600;letter-spacing:0.09em;text-transform:uppercase;color:#8e8e93;">${clinicaNombre}</p>
+      <h1 style="margin:0 0 10px 0;font-size:26px;font-weight:700;color:#ffffff;letter-spacing:-0.4px;">Recordatorio de Cita</h1>
+      <p style="margin:0;font-size:14px;color:#aeaeb2;">Faltan <strong style="color:#a78bfa;">${horasRestantes}</strong> para tu cita agendada</p>
+    </td>
+  </tr>
 
-        <!-- Mensaje importante -->
-        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 15px; margin: 0 0 25px 0; border-radius: 0 8px 8px 0;">
-          <p style="margin: 0; color: #92400e; font-size: 14px; line-height: 1.6;">
-            <b>⚠️ Importante:</b> Le solicitamos, por favor, no olvidar asistir a su cita en el horario indicado. 
-            En caso de no poder concurrir, le agradeceremos avisar con anticipación para poder reprogramarla 
-            y así liberar el cupo para otro paciente.
-          </p>
-        </div>
+  <!-- Línea acento violeta -->
+  <tr><td style="height:3px;background:linear-gradient(90deg,#6366f1,#8b5cf6,#a78bfa);"></td></tr>
 
-        <p style="font-size: 14px; color: #6b7280; margin: 0 0 20px 0;">
-          Quedamos atentos/as ante cualquier consulta o confirmación.
-        </p>
+  <!-- Card blanco -->
+  <tr>
+    <td style="background:#ffffff;padding:36px 40px 32px;border-radius:0 0 18px 18px;border:1px solid #e5e5ea;border-top:none;">
 
-        <!-- Firma -->
-        <div style="border-top: 1px solid #e5e7eb; padding-top: 20px; margin-top: 20px;">
-          <p style="margin: 0; color: #374151;">
-            Atentamente,<br>
-            <b style="color: #667eea;">Silueta Chic</b>
-          </p>
-        </div>
-      </div>
+      <p style="margin:0 0 6px 0;font-size:16px;font-weight:600;color:#1c1c1e;">
+        Hola, ${nombrePaciente}${apellidoPaciente ? ' ' + apellidoPaciente : ''} 👋
+      </p>
+      <p style="margin:0 0 28px 0;font-size:14px;color:#6b6b6b;line-height:1.6;">
+        Junto con saludarle, le recordamos que tiene una cita programada. Aquí el detalle:
+      </p>
 
-      <!-- Footer -->
-      <div style="background: #f3f4f6; padding: 20px; text-align: center;">
-        <p style="margin: 0; font-size: 12px; color: #9ca3af;">
-          Este es un correo automático del sistema de agendamiento.<br>
-          Por favor no responda a este mensaje.
-        </p>
-      </div>
-    </div>
-  `;
+      <!-- Detalle cita -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;border-radius:12px;overflow:hidden;margin:0 0 24px 0;">
+        <tr>
+          <td style="padding:16px 20px;border-bottom:1px solid #e5e5ea;">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Fecha</span><br>
+            <span style="font-size:15px;font-weight:600;color:#1c1c1e;margin-top:4px;display:block;">${fecha}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 20px;border-bottom:1px solid #e5e5ea;">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Hora</span><br>
+            <span style="font-size:15px;font-weight:600;color:#1c1c1e;margin-top:4px;display:block;">${hora}</span>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 20px;">
+            <span style="font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.07em;color:#8e8e93;">Lugar</span><br>
+            <span style="font-size:14px;color:#1c1c1e;margin-top:4px;display:block;line-height:1.5;">${DIRECCION_CLINICA}</span>
+          </td>
+        </tr>
+      </table>
+
+      <!-- Aviso -->
+      <table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f0ff;border-radius:10px;margin:0 0 28px 0;">
+        <tr>
+          <td style="padding:16px 20px;border-left:3px solid #7c3aed;border-radius:0 10px 10px 0;">
+            <p style="margin:0;font-size:13px;color:#4c1d95;line-height:1.6;">
+              <strong>Importante:</strong> Si no puede asistir, le pedimos avisarnos con anticipación para reprogramar su cita y liberar el cupo para otro paciente.
+            </p>
+          </td>
+        </tr>
+      </table>
+
+      <p style="margin:0 0 24px 0;font-size:14px;color:#6b6b6b;line-height:1.5;">
+        Quedamos atentos/as ante cualquier consulta o duda.
+      </p>
+
+      <!-- Firma -->
+      <table cellpadding="0" cellspacing="0" style="border-top:1px solid #e5e5ea;padding-top:20px;width:100%;">
+        <tr>
+          <td>
+            <p style="margin:0;font-size:13px;color:#8e8e93;">Con cariño,</p>
+            <p style="margin:4px 0 0 0;font-size:15px;font-weight:700;color:#1c1c1e;">${clinicaNombre}</p>
+            <p style="margin:3px 0 0 0;font-size:11px;color:#a78bfa;font-weight:600;letter-spacing:0.05em;">Powered by NativeCode</p>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+
+  <!-- Footer -->
+  <tr>
+    <td style="padding:20px 40px;text-align:center;">
+      <p style="margin:0;font-size:11px;color:#8e8e93;line-height:1.6;">
+        Este es un mensaje automático del sistema de agendamiento de ${clinicaNombre}.<br>
+        Por favor no responda a este correo.
+      </p>
+    </td>
+  </tr>
+
+</table>
+</td></tr>
+</table>
+</body>
+</html>`;
 
   const text = `
-Recordatorio de cita - Silueta Chic
+Recordatorio de cita - ${clinicaNombre}
 
-Estimado/a ${nombrePaciente} ${apellidoPaciente || ''}:
+Hola, ${nombrePaciente}${apellidoPaciente ? ' ' + apellidoPaciente : ''}:
 
-Junto con saludarle, queremos recordarle que mantiene una cita agendada según el siguiente detalle:
+Le recordamos que tiene una cita agendada con el siguiente detalle:
 
-📅 Fecha: ${fecha}
-⏰ Hora: ${hora}
-📍 Lugar: ${DIRECCION_CLINICA}
+Fecha: ${fecha}
+Hora: ${hora}
+Lugar: ${DIRECCION_CLINICA}
 
-Le solicitamos, por favor, no olvidar asistir a su cita en el horario indicado. En caso de no poder concurrir, le agradeceremos avisar con anticipación para poder reprogramarla y así liberar el cupo para otro paciente.
+Si no puede asistir, le pedimos avisarnos con anticipación para reprogramar su cita y liberar el cupo para otro paciente.
 
-Quedamos atentos/as ante cualquier consulta o confirmación.
+Quedamos atentos/as ante cualquier consulta.
 
-Atentamente,
-Silueta Chic
+Con cariño,
+${clinicaNombre}
   `;
 
   const payload = {
