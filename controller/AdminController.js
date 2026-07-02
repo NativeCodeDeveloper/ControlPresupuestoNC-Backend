@@ -72,6 +72,15 @@ async function pm2Stats(names, sshPrefix) {
     } catch { return names.map(n => ({ name: n, status: 'unknown' })); }
 }
 
+// Construye el prefijo SSH con host/user sanitizados para evitar inyección
+function buildSshPrefix(srv) {
+    if (srv.is_local) return null;
+    const host = (srv.host     || '').replace(/[^a-zA-Z0-9._:-]/g, '');
+    const user = (srv.ssh_user || 'root').replace(/[^a-zA-Z0-9_-]/g, '');
+    if (!host) return null;
+    return `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${user}@${host}`;
+}
+
 export default class AdminController {
 
     static async listServers(req, res) {
@@ -97,7 +106,7 @@ export default class AdminController {
             const rawProc   = srv.pm2_processes;
             const processes = Array.isArray(rawProc) ? rawProc
                             : (rawProc ? JSON.parse(rawProc) : []);
-            const sshPrefix = srv.is_local ? null : `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${srv.ssh_user}@${srv.host}`;
+            const sshPrefix = buildSshPrefix(srv);
 
             let cpu, ram, disk, pm2;
 
@@ -150,10 +159,9 @@ export default class AdminController {
             const logDir   = srv.log_dir || '/root/.pm2/logs';
             const logFile  = `${logDir}/${procName}-${type}.log`;
 
+            const sshPfx  = buildSshPrefix(srv);
             const tailCmd = `tail -n ${lines} "${logFile}" 2>/dev/null || true`;
-            const run     = srv.is_local
-                ? tailCmd
-                : `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${srv.ssh_user}@${srv.host} '${tailCmd}'`;
+            const run     = sshPfx ? `${sshPfx} '${tailCmd}'` : tailCmd;
 
             const { stdout } = await execAsync(run, { timeout: 10000 });
             const logLines = stdout.split('\n').filter(Boolean);
@@ -225,8 +233,8 @@ export default class AdminController {
             if (!rows.length) return res.status(404).json({ error: 'Servidor no encontrado' });
             const srv = rows[0];
 
-            const run = srv.is_local ? cmd
-                : `ssh -o StrictHostKeyChecking=no -o ConnectTimeout=5 ${srv.ssh_user}@${srv.host} '${cmd}'`;
+            const sshPfx2 = buildSshPrefix(srv);
+            const run     = sshPfx2 ? `${sshPfx2} '${cmd}'` : cmd;
 
             const { stdout, stderr } = await execAsync(run, { timeout: 15000 });
             res.json({ output: stdout + (stderr ? `\n[stderr]\n${stderr}` : ''), command: cmd });
