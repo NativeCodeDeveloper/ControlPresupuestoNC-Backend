@@ -72,6 +72,24 @@ async function pm2Stats(names, sshPrefix) {
     } catch { return names.map(n => ({ name: n, status: 'unknown' })); }
 }
 
+// Devuelve TODOS los procesos PM2 de un servidor (sin filtrar por nombre)
+async function pm2AllStats(sshPrefix) {
+    const cmd = 'pm2 jlist 2>/dev/null';
+    const run  = sshPrefix ? `${sshPrefix} '${cmd}'` : cmd;
+    try {
+        const { stdout } = await execAsync(run, { timeout: 8000 });
+        const list = JSON.parse(stdout || '[]');
+        return list.map(p => ({
+            name:     p.name,
+            status:   p.pm2_env?.status,
+            cpu:      p.monit?.cpu,
+            memory:   Math.round((p.monit?.memory || 0) / 1024 / 1024),
+            restarts: p.pm2_env?.restart_time,
+            uptime:   p.pm2_env?.pm_uptime,
+        }));
+    } catch { return []; }
+}
+
 // Construye el prefijo SSH con host/user sanitizados para evitar inyección
 function buildSshPrefix(srv) {
     if (srv.is_local) return null;
@@ -241,6 +259,116 @@ export default class AdminController {
         } catch (e) {
             const msg = e.killed ? 'Timeout (15s)' : e.stderr || e.message;
             res.json({ output: `Error: ${msg}`, command: req.body?.command });
+        }
+    }
+
+    // ── Vista por cliente ─────────────────────────────────────────────────────
+
+    static async listClients(req, res) {
+        try {
+            const rows = await db().ejecutarQuery(`
+                SELECT
+                    p.id_proyecto, p.codigo_interno,
+                    p.nombre AS nombre_proyecto, p.nombre_cliente, p.email_cliente,
+                    ss.id_servidor, ss.ruta_backend, ss.estado AS estado_servidor,
+                    ss.version, ss.pm2_process, ss.id_monitor_server,
+                    ms.nombre AS nombre_vps, ms.is_local,
+                    ms.host AS vps_host, ms.ssh_user AS vps_ssh_user
+                FROM proyectos p
+                INNER JOIN synapse_servidores ss
+                    ON ss.id_proyecto = p.id_proyecto AND ss.activo = 1
+                LEFT JOIN monitor_servers ms
+                    ON ms.id = ss.id_monitor_server AND ms.activo = 1
+                WHERE p.activo = 1
+                ORDER BY p.nombre_cliente, p.nombre
+            `);
+
+            if (!rows.length) return res.json([]);
+
+            // Recopilar servidores únicos referenciados
+            const serverMap = {};
+            for (const row of rows) {
+                if (row.id_monitor_server && !serverMap[row.id_monitor_server]) {
+                    serverMap[row.id_monitor_server] = {
+                        id: row.id_monitor_server, nombre: row.nombre_vps,
+                        is_local: row.is_local, host: row.vps_host, ssh_user: row.vps_ssh_user,
+                    };
+                }
+            }
+
+            // PM2 stats por servidor en paralelo
+            const pm2Cache = {};
+            await Promise.all(Object.values(serverMap).map(async srv => {
+                try {
+                    pm2Cache[srv.id] = await pm2AllStats(buildSshPrefix(srv));
+                } catch { pm2Cache[srv.id] = []; }
+            }));
+
+            const result = rows.map(row => {
+                const pm2List = pm2Cache[row.id_monitor_server] || [];
+                const procStats = row.pm2_process
+                    ? (pm2List.find(p => p.name === row.pm2_process) || { name: row.pm2_process, status: 'unknown' })
+                    : null;
+                return {
+                    id_proyecto: row.id_proyecto, codigo_interno: row.codigo_interno,
+                    nombre_proyecto: row.nombre_proyecto, nombre_cliente: row.nombre_cliente,
+                    email_cliente: row.email_cliente,
+                    id_servidor: row.id_servidor, ruta_backend: row.ruta_backend,
+                    estado_servidor: row.estado_servidor, version: row.version,
+                    pm2_process: row.pm2_process, id_monitor_server: row.id_monitor_server,
+                    nombre_vps: row.nombre_vps, proc_stats: procStats,
+                };
+            });
+
+            res.json(result);
+        } catch (e) {
+            console.error('[ADMIN] listClients:', e.message);
+            res.status(500).json({ error: 'Error al obtener clientes' });
+        }
+    }
+
+    // Retorna todos los procesos PM2 de un servidor (para el selector de asignación)
+    static async listServerProcesses(req, res) {
+        try {
+            const rows = await db().ejecutarQuery(
+                'SELECT * FROM monitor_servers WHERE id = ? AND activo = 1', [req.params.id]
+            );
+            if (!rows.length) return res.status(404).json({ error: 'Servidor no encontrado' });
+            const sshPrefix = buildSshPrefix(rows[0]);
+            const processes = await pm2AllStats(sshPrefix);
+            res.json(processes);
+        } catch (e) {
+            console.error('[ADMIN] listServerProcesses:', e.message);
+            res.status(500).json({ error: 'Error al obtener procesos' });
+        }
+    }
+
+    // Asigna (o desasigna) el proceso PM2 y servidor monitor de un synapse_servidor
+    static async updateClientProcess(req, res) {
+        try {
+            const id = parseInt(req.params.id);
+            if (!id) return res.status(400).json({ error: 'ID inválido' });
+
+            const { pm2_process, id_monitor_server } = req.body;
+
+            // Sanitizar: solo alfanumérico + guiones + underscores
+            const safeProcess = pm2_process
+                ? String(pm2_process).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) || null
+                : null;
+
+            const safeServer = id_monitor_server ? parseInt(id_monitor_server) : 1;
+            if (isNaN(safeServer) || safeServer < 1) {
+                return res.status(400).json({ error: 'id_monitor_server inválido' });
+            }
+
+            await db().ejecutarQuery(
+                'UPDATE synapse_servidores SET pm2_process = ?, id_monitor_server = ? WHERE id_servidor = ? AND activo = 1',
+                [safeProcess, safeServer, id]
+            );
+            res.json({ ok: true });
+        } catch (e) {
+            console.error('[ADMIN] updateClientProcess:', e.message);
+            res.status(500).json({ error: 'Error al actualizar proceso' });
         }
     }
 }
