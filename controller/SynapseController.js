@@ -279,7 +279,7 @@ export default class SynapseController {
           <td style="background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);
                      padding:36px 40px 32px;">
             <p style="margin:0 0 6px 0;font-size:11px;font-weight:600;letter-spacing:.09em;
-                      text-transform:uppercase;color:#8e8e93;">NativeCode · Production Cockpit</p>
+                      text-transform:uppercase;color:#8e8e93;">NativeCode</p>
             <h1 style="margin:0;font-size:24px;font-weight:700;color:#ffffff;
                        letter-spacing:-.4px;line-height:1.25;">
               ${subject.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')}
@@ -304,8 +304,7 @@ export default class SynapseController {
 
             <!-- Pie de mensaje -->
             <p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">
-              Este mensaje fue enviado desde el
-              <strong style="color:#3a3a3c;">Production Cockpit</strong> de NativeCode.<br>
+              Este mensaje fue enviado por NativeCode.<br>
               Para consultas, puede contactarnos en
               <a href="mailto:ingenieria.software@nativecode.cl"
                  style="color:#6366f1;text-decoration:none;font-weight:500;">

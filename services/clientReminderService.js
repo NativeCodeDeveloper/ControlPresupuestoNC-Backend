@@ -62,52 +62,59 @@ const STAGES = [
     }
 ];
 
+const F = 'font-family:-apple-system,BlinkMacSystemFont,\'Helvetica Neue\',Helvetica,Arial,sans-serif;';
+
 function buildClientEmailHtml({ proyecto, stage }) {
     const montoStr = formatearMonto(proyecto.monto_acordado);
     const fechaStr = formatearFecha(proyecto.fecha_proximo_pago);
+    const nombreCliente = proyecto.nombre_cliente || 'Cliente';
 
     const suspensionBlock = stage.esSuspension ? `
       <tr><td style="padding:0 40px 20px;">
         <div style="background:#fff1f0;border:1px solid #ffccc7;border-radius:10px;padding:16px 20px;">
-          <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#cf1322;line-height:1.6;font-weight:500;">
-            Tu servicio será suspendido si no regularizas el pago. Contáctanos para coordinar.
+          <p style="margin:0;${F}font-size:14px;color:#cf1322;line-height:1.6;font-weight:500;">
+            Su servicio será suspendido si no regulariza el pago. Contáctenos para coordinar.
           </p>
         </div>
       </td></tr>` : '';
 
     return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"></head>
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1.0"><meta name="color-scheme" content="light"></head>
 <body style="margin:0;padding:0;background:#f5f5f7;">
-<table width="100%" cellpadding="0" cellspacing="0" style="background:#f5f5f7;padding:40px 20px;">
+<table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f5f5f7;padding:40px 20px;">
   <tr><td align="center">
-    <table width="560" cellpadding="0" cellspacing="0" style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
+    <table width="560" cellpadding="0" cellspacing="0" role="presentation"
+           style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
 
-      <tr><td style="padding:32px 40px 8px;text-align:center;">
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;font-weight:600;color:#1d1d1f;letter-spacing:0.5px;">NativeCode</p>
+      <!-- Cabecera -->
+      <tr><td style="padding:36px 40px 8px;">
+        <p style="margin:0;${F}font-size:13px;font-weight:600;color:#86868b;letter-spacing:.5px;">AgendaClinica</p>
       </td></tr>
 
-      <tr><td style="padding:20px 40px 28px;">
-        <p style="margin:0 0 10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#86868b;letter-spacing:1px;text-transform:uppercase;">${stage.etiqueta}</p>
-        <h1 style="margin:0 0 12px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:26px;font-weight:600;color:#1d1d1f;line-height:1.2;">${stage.titulo}</h1>
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;color:#6e6e73;line-height:1.6;">Hola, ${proyecto.nombre_cliente}. ${stage.mensaje}</p>
+      <!-- Título y saludo -->
+      <tr><td style="padding:16px 40px 28px;">
+        <p style="margin:0 0 8px 0;${F}font-size:12px;color:#86868b;letter-spacing:1px;text-transform:uppercase;">${stage.etiqueta}</p>
+        <h1 style="margin:0 0 14px 0;${F}font-size:26px;font-weight:600;color:#1d1d1f;line-height:1.2;">${stage.titulo}</h1>
+        <p style="margin:0;${F}font-size:15px;color:#6e6e73;line-height:1.65;">Estimado/a <strong style="color:#1d1d1f;">${nombreCliente}</strong>, ${stage.mensaje}</p>
       </td></tr>
 
       <tr><td style="padding:0 40px;"><div style="height:1px;background:#f2f2f7;"></div></td></tr>
 
+      <!-- Detalle -->
       <tr><td style="padding:24px 40px;">
-        <table width="100%" cellpadding="0" cellspacing="0">
+        <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
           <tr>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Servicio</td>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${proyecto.nombre || '—'}</td>
+            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;${F}font-size:14px;color:#86868b;">Servicio</td>
+            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;${F}font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${proyecto.nombre || '—'}</td>
           </tr>
           <tr>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Monto</td>
-            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:15px;color:#1d1d1f;font-weight:600;text-align:right;">${montoStr}</td>
+            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;${F}font-size:14px;color:#86868b;">Monto</td>
+            <td style="padding:10px 0;border-bottom:1px solid #f2f2f7;${F}font-size:15px;color:#1d1d1f;font-weight:600;text-align:right;">${montoStr}</td>
           </tr>
           <tr>
-            <td style="padding:10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#86868b;">Fecha de pago</td>
-            <td style="padding:10px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${fechaStr}</td>
+            <td style="padding:10px 0;${F}font-size:14px;color:#86868b;">Fecha de pago</td>
+            <td style="padding:10px 0;${F}font-size:14px;color:#1d1d1f;font-weight:500;text-align:right;">${fechaStr}</td>
           </tr>
         </table>
       </td></tr>
@@ -116,14 +123,24 @@ function buildClientEmailHtml({ proyecto, stage }) {
 
       ${stage.mostrarFooterPago ? `
       <tr><td style="padding:0 40px 20px;">
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:#86868b;line-height:1.5;text-align:center;">
-          Si ya realizaste el pago, por favor ignora este mensaje.<br>Tu servicio se actualizará automáticamente cuando registremos tu abono.
-        </p>
+        <div style="background:#f5f5f7;border-radius:10px;padding:16px 20px;">
+          <p style="margin:0;${F}font-size:13px;color:#3a3a3c;line-height:1.6;">
+            Si ya realizó el pago, por favor omita este mensaje. Su servicio se actualizará una vez que registremos su abono.
+          </p>
+        </div>
       </td></tr>` : ''}
 
-      <tr><td style="border-top:1px solid #f2f2f7;padding:24px 40px;text-align:center;">
-        <p style="margin:0 0 6px 0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:13px;color:#3a3a3c;">¿Tienes alguna consulta? Contáctanos por WhatsApp o responde este correo.</p>
-        <p style="margin:0;font-family:-apple-system,BlinkMacSystemFont,'Helvetica Neue',Helvetica,Arial,sans-serif;font-size:12px;color:#86868b;">NativeCode · Este es un mensaje automático</p>
+      <!-- Footer -->
+      <tr><td style="border-top:1px solid #f2f2f7;padding:24px 40px;">
+        <p style="margin:0 0 6px 0;${F}font-size:13px;color:#3a3a3c;line-height:1.6;">
+          Para consultas, puede contactarnos en
+          <a href="mailto:ingenieria.software@nativecode.cl"
+             style="color:#1d1d1f;text-decoration:none;font-weight:500;">ingenieria.software@nativecode.cl</a>
+          o al <strong>+56 9 3291 2943</strong>.
+        </p>
+        <p style="margin:6px 0 0 0;${F}font-size:12px;color:#86868b;">
+          AgendaClinica · Desarrollado por NativeCode · Mensaje automático
+        </p>
       </td></tr>
 
     </table>
@@ -134,7 +151,8 @@ function buildClientEmailHtml({ proyecto, stage }) {
 }
 
 function buildTextContent({ proyecto, stage }) {
-    return `${stage.etiqueta} — NativeCode\n\nHola, ${proyecto.nombre_cliente}.\n\n${stage.mensaje}\n\nServicio: ${proyecto.nombre}\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nFecha de pago: ${proyecto.fecha_proximo_pago}\n\n${stage.esSuspension ? 'Tu servicio será suspendido si no regularizas el pago.\n\n' : ''}¿Tienes consultas? Responde este correo o contáctanos por WhatsApp.\n\nNativeCode`;
+    const nombre = proyecto.nombre_cliente || 'Cliente';
+    return `${stage.etiqueta} — AgendaClinica\n\nEstimado/a ${nombre},\n\n${stage.mensaje}\n\nServicio: ${proyecto.nombre}\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nFecha de pago: ${proyecto.fecha_proximo_pago}\n\n${stage.esSuspension ? 'Su servicio será suspendido si no regulariza el pago.\n\n' : ''}Para consultas: ingenieria.software@nativecode.cl · +56 9 3291 2943\n\nAgendaClinica · Desarrollado por NativeCode`;
 }
 
 async function marcarEnviado(conexion, idProyecto, col, fechaProximoPago) {
