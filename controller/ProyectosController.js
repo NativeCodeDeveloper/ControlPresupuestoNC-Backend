@@ -148,12 +148,12 @@ export default class ProyectosController {
             } = req.body;
 
             // Validar campos mínimos obligatorios
-            if (!nombre || !tipo_proyecto_id || !estado_proyecto_id || !nombre_cliente || !monto_acordado) {
+            if (!nombre || !tipo_proyecto_id || !estado_proyecto_id || !nombre_cliente || monto_acordado === undefined || monto_acordado === null || monto_acordado === '') {
                 return res.status(400).json({ message: "Faltan datos requeridos" });
             }
             const montoNum = Number(monto_acordado);
-            if (!Number.isFinite(montoNum) || montoNum <= 0) {
-                return res.status(400).json({ message: "monto_acordado debe ser un número positivo" });
+            if (!Number.isFinite(montoNum) || montoNum < 0) {
+                return res.status(400).json({ message: "monto_acordado debe ser un número válido (0 o mayor)" });
             }
 
             const proyecto = new Proyectos();
