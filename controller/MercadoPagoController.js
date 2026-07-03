@@ -21,11 +21,6 @@ export const createOrder = async (req, res) => {
             return res.status(400).json({ error: 'No se recibieron productos en el carrito' });
         }
 
-        console.log("#############################")
-        console.log("#############################")
-        console.log(productosDelCarrito);
-        console.log("#############################")
-        console.log("#############################")
 
 
         // Normalizamos los items para Mercado Pago
@@ -207,8 +202,6 @@ export const recibirPago = async (req, res) => {
     const body = req.body;
 
 /*
-    console.log('==== WEBHOOK MP ====');
-    console.log(JSON.stringify(body, null, 2));
 
 * */
 
@@ -230,7 +223,6 @@ export const recibirPago = async (req, res) => {
             });
 
             const payment = await resp.json();
-//            console.log('PAYMENT DETAIL:', payment);
 
             // Aquí podrías usar payment.order.id o payment.external_reference, etc.
             // TODO: actualizar pedido según payment
@@ -264,7 +256,6 @@ export const recibirPago = async (req, res) => {
             }
 
             const merchantOrder = await resp.json();
-            console.log('MERCHANT ORDER DETAIL:', merchantOrder);
 
             const preferenceId = merchantOrder.preference_id;
             const payments = merchantOrder.payments || [];
@@ -272,12 +263,6 @@ export const recibirPago = async (req, res) => {
             const preference_id = merchantOrder.preference_id;
 
             // Ejemplo de log rápido
-            console.log("");
-            console.log("-----------------------------------------");
-            console.log('WEB HOOK ENVIA : preference_id:', preferenceId);
-            console.log('WEB HOOK ENVIA :pagoAprobado:', pagoAprobado);
-            console.log("-----------------------------------------");
-            console.log("");
 
             // 👉 AQUÍ VA TU LÓGICA DE NEGOCIO
             // Buscar el pedido en MySQL por preference_id y actualizar el estado.
@@ -292,7 +277,6 @@ export const recibirPago = async (req, res) => {
                 if(resultadoQuery.affectedRows > 0){
 
 
-                    console.log(" --------> SE HA CAMBIADO EL ESTADO A 1 (PAGADO / PENDIENTE ENVIO)");
 
                     // --- Buscar datos del pedido y sus productos para enviar comprobante ---
                     try {
@@ -334,11 +318,7 @@ export const recibirPago = async (req, res) => {
                             );
 
                             if (insertarPacienteQuePago.affectedRows > 0) {
-                                console.log("Paciente insertado correctamente ");
-                                console.log(correo);
                             }else{
-                                console.log("Paciente no se pudo insertar por duplicacion en el Numero unico de identificacion (RUT) ");
-                                console.log(rut);
                             }
 
 
@@ -374,7 +354,6 @@ export const recibirPago = async (req, res) => {
 
                             // Llamamos a la función que envía el comprobante por correo
                             await enviarComprobanteCompraInterno({ cliente, venta, productos, pago: pagoAprobadoObj, merchantOrder });
-                            console.log('Comprobante enviado (intento) para preference_id:', preference_id);
 
                             // Enviar notificación al dueño con datos completos del cliente y compra
                             await enviarNotificacionCompraDueno({
@@ -393,7 +372,6 @@ export const recibirPago = async (req, res) => {
                                 productos,
                                 pago: pagoAprobadoObj
                             });
-                            console.log('Notificación enviada al dueño para preference_id:', preference_id);
                         } else {
                             console.warn('No se encontró pedido para preference_id al enviar comprobante:', preference_id);
                         }
@@ -403,16 +381,9 @@ export const recibirPago = async (req, res) => {
                     }
 
                     return res.status(200).json({ received: true });
-                    console.log('')
-                    console.log('')
 
                 }else{
 
-                    console.log('')
-                    console.log('')
-                    console.log("--------> NO SE HA CAMBIADO EL ESTADO. NO HAY SIMILITUDES CON EL  --> preference_id <-- :  " + preference_id);
-                    console.log('')
-                    console.log('')
                     return res.status(200).json({ received: true });
 
                 }
@@ -427,7 +398,6 @@ export const recibirPago = async (req, res) => {
         }
 
         // 3) CUALQUIER OTRO TIPO
-        console.log('Webhook no manejado. topic/type:', body.topic, body.type);
         return res.status(200).json({ received: true, ignored: true });
 
     } catch (err) {
@@ -544,7 +514,6 @@ async function enviarComprobanteCompraInterno({ cliente, venta, productos }) {
         if (!resp.ok) {
             console.error("Error Brevo comprobante:", data);
         } else {
-            console.log("Comprobante enviado correctamente a:", cliente.email);
         }
     } catch (err) {
         console.error("Error enviando comprobante (Brevo):", err);
@@ -673,7 +642,6 @@ async function enviarNotificacionCompraDueno({ cliente, venta, productos }) {
         if (!resp.ok) {
             console.error("Error Brevo notificación dueño:", data);
         } else {
-            console.log("Notificación enviada correctamente al dueño de la tienda.");
         }
     } catch (err) {
         console.error("Error enviando notificación (Brevo):", err);

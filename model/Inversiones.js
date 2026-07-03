@@ -2,9 +2,12 @@ import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 let inversionesColumnsCache = null;
+let inversionesColumnsCachePromise = null;
 
 const getInversionesColumns = async (conexion) => {
     if (inversionesColumnsCache) return inversionesColumnsCache;
+    if (inversionesColumnsCachePromise) return inversionesColumnsCachePromise;
+    inversionesColumnsCachePromise = (async () => {
 
     const rows = await conexion.ejecutarQuery(
         `SELECT COLUMN_NAME
@@ -14,13 +17,14 @@ const getInversionesColumns = async (conexion) => {
         []
     );
 
-    inversionesColumnsCache = new Set(
-        (Array.isArray(rows) ? rows : [])
-            .map((row) => String(row.COLUMN_NAME || "").trim())
-            .filter(Boolean)
-    );
-
-    return inversionesColumnsCache;
+        inversionesColumnsCache = new Set(
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => String(row.COLUMN_NAME || "").trim())
+                .filter(Boolean)
+        );
+        return inversionesColumnsCache;
+    })();
+    return inversionesColumnsCachePromise;
 };
 
 const hasInversionesColumn = async (conexion, columnName) => {

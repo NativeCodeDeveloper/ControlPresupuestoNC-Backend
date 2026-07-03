@@ -127,7 +127,10 @@ export default class RetirosSociosController {
                 const data = await getPartnerAvailableAmount(id, queryPeriodo);
                 if (!data) throw Object.assign(new Error("Error al calcular disponible del socio"), { status: 500 });
 
-                const disponible = Number(data.disponible || 0);
+                if (data.disponible === null || data.disponible === undefined || !Number.isFinite(Number(data.disponible))) {
+                    throw Object.assign(new Error("No se pudo determinar el disponible del socio"), { status: 500 });
+                }
+                const disponible = Number(data.disponible);
                 if (montoFinal > disponible) {
                     const acumulado = Number(data.acumulado || 0);
                     const margenMensual = Number(data.margenMensual || 0);

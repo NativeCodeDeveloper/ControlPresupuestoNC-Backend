@@ -2,9 +2,12 @@ import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 let retirosSociosColumnsCache = null;
+let retirosSociosColumnsCachePromise = null;
 
 const getRetirosSociosColumns = async (conexion) => {
     if (retirosSociosColumnsCache) return retirosSociosColumnsCache;
+    if (retirosSociosColumnsCachePromise) return retirosSociosColumnsCachePromise;
+    retirosSociosColumnsCachePromise = (async () => {
 
     const rows = await conexion.ejecutarQuery(
         `SELECT COLUMN_NAME
@@ -14,13 +17,14 @@ const getRetirosSociosColumns = async (conexion) => {
         []
     );
 
-    retirosSociosColumnsCache = new Set(
-        (Array.isArray(rows) ? rows : [])
-            .map((row) => String(row.COLUMN_NAME || "").trim())
-            .filter(Boolean)
-    );
-
-    return retirosSociosColumnsCache;
+        retirosSociosColumnsCache = new Set(
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => String(row.COLUMN_NAME || "").trim())
+                .filter(Boolean)
+        );
+        return retirosSociosColumnsCache;
+    })();
+    return retirosSociosColumnsCachePromise;
 };
 
 const hasRetirosSociosColumn = async (conexion, columnName) => {

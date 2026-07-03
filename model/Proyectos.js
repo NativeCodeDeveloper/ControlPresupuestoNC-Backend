@@ -2,9 +2,12 @@ import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 let proyectosColumnsCache = null;
+let proyectosColumnsCachePromise = null;
 
 const getProyectosColumns = async (conexion) => {
     if (proyectosColumnsCache) return proyectosColumnsCache;
+    if (proyectosColumnsCachePromise) return proyectosColumnsCachePromise;
+    proyectosColumnsCachePromise = (async () => {
 
     const rows = await conexion.ejecutarQuery(
         `SELECT COLUMN_NAME
@@ -14,13 +17,14 @@ const getProyectosColumns = async (conexion) => {
         []
     );
 
-    proyectosColumnsCache = new Set(
-        (Array.isArray(rows) ? rows : [])
-            .map((row) => String(row.COLUMN_NAME || "").trim())
-            .filter(Boolean)
-    );
-
-    return proyectosColumnsCache;
+        proyectosColumnsCache = new Set(
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => String(row.COLUMN_NAME || "").trim())
+                .filter(Boolean)
+        );
+        return proyectosColumnsCache;
+    })();
+    return proyectosColumnsCachePromise;
 };
 
 const hasProyectosColumn = async (conexion, columnName) => {

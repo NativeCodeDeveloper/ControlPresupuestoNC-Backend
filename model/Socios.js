@@ -2,9 +2,12 @@ import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 let sociosColumnsCache = null;
+let sociosColumnsCachePromise = null;
 
 const getSociosColumns = async (conexion) => {
     if (sociosColumnsCache) return sociosColumnsCache;
+    if (sociosColumnsCachePromise) return sociosColumnsCachePromise;
+    sociosColumnsCachePromise = (async () => {
 
     const query = `
         SELECT COLUMN_NAME
@@ -14,12 +17,14 @@ const getSociosColumns = async (conexion) => {
     `;
 
     const rows = await conexion.ejecutarQuery(query, []);
-    sociosColumnsCache = new Set(
-        (Array.isArray(rows) ? rows : [])
-            .map((row) => String(row.COLUMN_NAME || "").trim())
-            .filter(Boolean)
-    );
-    return sociosColumnsCache;
+        sociosColumnsCache = new Set(
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => String(row.COLUMN_NAME || "").trim())
+                .filter(Boolean)
+        );
+        return sociosColumnsCache;
+    })();
+    return sociosColumnsCachePromise;
 };
 
 const hasSociosColumn = async (conexion, columnName) => {

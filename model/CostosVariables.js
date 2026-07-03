@@ -2,9 +2,12 @@ import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
 let costosVariablesColumnsCache = null;
+let costosVariablesColumnsCachePromise = null;
 
 const getCostosVariablesColumns = async (conexion) => {
     if (costosVariablesColumnsCache) return costosVariablesColumnsCache;
+    if (costosVariablesColumnsCachePromise) return costosVariablesColumnsCachePromise;
+    costosVariablesColumnsCachePromise = (async () => {
 
     const rows = await conexion.ejecutarQuery(
         `SELECT COLUMN_NAME
@@ -14,13 +17,14 @@ const getCostosVariablesColumns = async (conexion) => {
         []
     );
 
-    costosVariablesColumnsCache = new Set(
-        (Array.isArray(rows) ? rows : [])
-            .map((row) => String(row.COLUMN_NAME || "").trim())
-            .filter(Boolean)
-    );
-
-    return costosVariablesColumnsCache;
+        costosVariablesColumnsCache = new Set(
+            (Array.isArray(rows) ? rows : [])
+                .map((row) => String(row.COLUMN_NAME || "").trim())
+                .filter(Boolean)
+        );
+        return costosVariablesColumnsCache;
+    })();
+    return costosVariablesColumnsCachePromise;
 };
 
 const hasCostosVariablesColumn = async (conexion, columnName) => {
