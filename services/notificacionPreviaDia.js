@@ -69,6 +69,9 @@ async function enviarCorreoRecordatorio({ email, nombrePaciente, apellidoPacient
        style="max-width:580px;background:#ffffff;border-radius:18px;
               box-shadow:0 4px 24px rgba(0,0,0,.08),0 1px 4px rgba(0,0,0,.04);overflow:hidden;">
 
+  <!-- Línea NativeCode -->
+  <tr><td style="background:#6366f1;height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+
   <!-- Header oscuro -->
   <tr>
     <td style="background:linear-gradient(135deg,#1c1c1e 0%,#2c2c2e 100%);padding:36px 40px 32px;">

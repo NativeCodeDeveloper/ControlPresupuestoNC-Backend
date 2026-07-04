@@ -87,6 +87,9 @@ function buildClientEmailHtml({ proyecto, stage }) {
     <table width="560" cellpadding="0" cellspacing="0" role="presentation"
            style="background:#ffffff;border-radius:16px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,0.08);">
 
+      <!-- Línea NativeCode -->
+      <tr><td style="background:#6366f1;height:4px;font-size:0;line-height:0;">&nbsp;</td></tr>
+
       <!-- Cabecera -->
       <tr><td style="padding:36px 40px 8px;">
         <p style="margin:0;${F}font-size:13px;font-weight:600;color:#86868b;letter-spacing:.5px;">AgendaClinica</p>

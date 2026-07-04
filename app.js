@@ -47,6 +47,8 @@ import notificacionAgendamientoRoutes from "./view/notificacionAgendamientoRoute
 import { ejecutarRecordatoriosAutomaticos } from "./services/notificacionPreviaDia.js";
 import { ejecutarRecordatoriosCobro } from "./services/billingReminderService.js";
 import { ejecutarRecordatoriosCliente } from "./services/clientReminderService.js";
+import calendarioRoutes from "./view/calendarioRoutes.js";
+import { ejecutarRecordatoriosCalendario } from "./services/calendarioReminderService.js";
 
 
 const app = express();
@@ -157,7 +159,8 @@ app.use("/api/inversiones", requireAuth, inversionesRoutes);
 app.use("/api/synapse", requireAuth, synapseRoutes);
 app.use("/api/workspace", requireAuth, workspaceRoutes);
 app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
-app.use("/api/admin",   requireAuth, adminRoutes);
+app.use("/api/admin",      requireAuth, adminRoutes);
+app.use("/api/calendario", requireAuth, calendarioRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
@@ -263,6 +266,17 @@ app.listen(PORT, () => {
 
     if (typeof billingHandle.unref === "function") {
         billingHandle.unref();
+    }
+
+    // CRON CALENDARIO: Recordatorios de eventos — cada minuto
+    const calendarioHandle = setInterval(() => {
+        ejecutarRecordatoriosCalendario().catch((err) => {
+            console.error('[CALENDARIO] Error inesperado en cron:', err?.message || err);
+        });
+    }, 5 * 60 * 1000); // 5 minutos (antes: 1 min — quemaba CPU)
+
+    if (typeof calendarioHandle.unref === "function") {
+        calendarioHandle.unref();
     }
 
     // CRON CLIENT: desactivado — los avisos al cliente se envían manualmente desde el cockpit

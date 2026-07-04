@@ -84,6 +84,7 @@ export default class NotificacionAgendamiento {
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111; max-width: 600px; margin: 0 auto;">
+        <div style="background:#6366f1;height:4px;font-size:0;line-height:0;border-radius:4px 4px 0 0;">&nbsp;</div>
         <h2 style="color: #667eea;">¡Tu cita con ${fromName} ha sido confirmada! 🎉</h2>
         <p>Hola <b>${nombrePaciente} ${apellidoPaciente}</b>,</p>
         <p><b>Detalle de tu reserva:</b></p>
@@ -245,7 +246,8 @@ export default class NotificacionAgendamiento {
 
     const html = `
       <div style="font-family: Arial, sans-serif; line-height: 1.6; color: #111;">
-        <div style="background: ${colorAccion}; color: white; padding: 20px; text-align: center; border-radius: 8px 8px 0 0;">
+        <div style="background:#6366f1;height:4px;font-size:0;line-height:0;border-radius:4px 4px 0 0;">&nbsp;</div>
+        <div style="background: ${colorAccion}; color: white; padding: 20px; text-align: center; border-radius: 0 0 0 0;">
           <h2 style="margin: 0; font-size: 24px;">${iconoAccion} Cita ${textoAccion}</h2>
         </div>
         <div style="padding: 20px; background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 0 0 8px 8px;">
