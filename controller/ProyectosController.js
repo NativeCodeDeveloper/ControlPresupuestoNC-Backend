@@ -208,8 +208,8 @@ export default class ProyectosController {
                 url_cobro_mercadopago
             } = req.body;
 
-            if (!id || !nombre || !nombre_cliente) {
-                return res.status(404).json({ message: "Faltan datos requeridos" });
+            if (!id || !nombre || !nombre_cliente || !estado_proyecto_id) {
+                return res.status(400).json({ message: "Faltan datos requeridos (nombre, cliente o estado)" });
             }
 
             const proyecto = new Proyectos();
