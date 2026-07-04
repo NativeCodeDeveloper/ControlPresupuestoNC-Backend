@@ -1,8 +1,10 @@
+import { createServer } from "http";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
 import helmet from "helmet";
 import morgan from "morgan";
+import { initSocket } from "./config/socket.js";
 import { clerkMiddleware } from "@clerk/express";
 import { requireAuth } from "./middleware/requireAuth.js";
 
@@ -230,7 +232,10 @@ process.on('unhandledRejection', (reason) => {
 
 const PORT = process.env.PORT || 3000;
 
-app.listen(PORT, () => {
+const httpServer = createServer(app);
+initSocket(httpServer, allowedOrigins.length > 0 ? allowedOrigins : '*');
+
+httpServer.listen(PORT, () => {
     console.log(`BACKEND CORRIENDO SIN PROBLEMAS EN --->  http://localhost:${PORT}`);
 
     if (!ENABLE_REMINDERS_CRON) {

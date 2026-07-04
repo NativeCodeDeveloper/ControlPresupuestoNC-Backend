@@ -1,5 +1,6 @@
 import Proyectos from "../model/Proyectos.js";
 import { parsePagination } from "../utils/pagination.js";
+import { emitUpdate } from "../config/socket.js";
 
 /**
  * computeAlertaPago - Calcula el estado de alerta de facturación de un proyecto.
@@ -173,6 +174,7 @@ export default class ProyectosController {
                 ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null,
                 url_cobro_mercadopago || null
             );
+            emitUpdate('proyectos:updated');
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
         } catch (error) {
             console.error("[ProyectosController.crearProyecto]", error);
@@ -224,6 +226,7 @@ export default class ProyectosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Proyecto no encontrado o eliminado" });
             }
+            emitUpdate('proyectos:updated');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[ProyectosController.actualizarProyecto]", error);
@@ -252,6 +255,7 @@ export default class ProyectosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Proyecto no encontrado o eliminado" });
             }
+            emitUpdate('proyectos:updated');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[ProyectosController.cambiarEstadoProyecto]", error);
@@ -277,6 +281,7 @@ export default class ProyectosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Proyecto no encontrado o ya eliminado" });
             }
+            emitUpdate('proyectos:updated');
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[ProyectosController.eliminarProyecto]", error);
@@ -343,6 +348,7 @@ export default class ProyectosController {
 
             const proyecto = new Proyectos();
             const resultado = await proyecto.insertProyectoPago(id, conceptoFinal, montoFinal, fechaFinal, comprobanteFinal, notas);
+            emitUpdate('proyectos:updated');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[ProyectosController.registrarPagoProyecto]", error);
@@ -350,7 +356,7 @@ export default class ProyectosController {
         }
     }
 
-    // PUT /api/proyectos/:id/pagos/:pagoId — editar concepto, monto, fecha_pago, comprobante, notas
+    // PUT /api/proyectos/:id/pagos/:pagoId
     static async actualizarPagoProyecto(req, res) {
         try {
             const { pagoId } = req.params;
@@ -360,6 +366,7 @@ export default class ProyectosController {
             }
             const proyecto = new Proyectos();
             const resultado = await proyecto.updateProyectoPago(pagoId, concepto, monto, fecha_pago, numero_comprobante ?? null, notas ?? null);
+            emitUpdate('proyectos:updated');
             return res.json(resultado);
         } catch (error) {
             console.error("[ProyectosController.actualizarPagoProyecto]", error);
@@ -367,12 +374,13 @@ export default class ProyectosController {
         }
     }
 
-    // DELETE /api/proyectos/:id/pagos/:pagoId — elimina pago y recalcula monto_pagado
+    // DELETE /api/proyectos/:id/pagos/:pagoId
     static async eliminarPagoProyecto(req, res) {
         try {
             const { pagoId } = req.params;
             const proyecto = new Proyectos();
             const resultado = await proyecto.deleteProyectoPago(pagoId);
+            emitUpdate('proyectos:updated');
             return res.json(resultado);
         } catch (error) {
             console.error("[ProyectosController.eliminarPagoProyecto]", error);
