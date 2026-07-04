@@ -1,8 +1,9 @@
-import { requireAuth as clerkRequireAuth } from '@clerk/express';
+import { getAuth } from '@clerk/express';
 
-/**
- * Middleware que verifica el JWT de Clerk en el header Authorization.
- * Adjunta auth.userId a req.auth si el token es válido.
- * Rechaza con 401 si falta o es inválido.
- */
-export const requireAuth = clerkRequireAuth();
+export const requireAuth = (req, res, next) => {
+    const { userId } = getAuth(req);
+    if (!userId) {
+        return res.status(401).json({ message: 'No autorizado' });
+    }
+    next();
+};
