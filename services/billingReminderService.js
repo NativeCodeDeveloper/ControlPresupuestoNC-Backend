@@ -205,7 +205,8 @@ export async function ejecutarRecordatoriosCobro() {
             const stage = STAGES.find(s => s.diff === diff);
             if (!stage) continue;
 
-            if (proyecto[stage.col] === proyecto.fecha_proximo_pago) {
+            const toDay = v => v instanceof Date ? v.toISOString().slice(0, 10) : String(v || '').slice(0, 10);
+            if (toDay(proyecto[stage.col]) === toDay(proyecto.fecha_proximo_pago)) {
                 console.log(`${LOG} ${stage.etiqueta} ya enviado para ${proyecto.codigo_interno}`);
                 continue;
             }
