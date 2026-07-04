@@ -58,7 +58,7 @@ async function getPushSubscriptions() {
 
 async function sendPushNotification(titulo, body) {
     const subs = await getPushSubscriptions();
-    const payload = JSON.stringify({ titulo, body, icon: '/logosoloncf.png', url: '/calendario' });
+    const payload = JSON.stringify({ titulo, body, icon: '/logonuevoblanco.png', url: '/calendario' });
     await Promise.allSettled(
         subs.map(sub =>
             webpush.sendNotification(
