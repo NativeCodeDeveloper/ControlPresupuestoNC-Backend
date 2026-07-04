@@ -31,4 +31,14 @@ router.get('/:id/pagos', ProyectosController.obtenerPagosProyecto);
 // POST - Registrar pago de proyecto
 router.post('/:id/pagos', ProyectosController.registrarPagoProyecto);
 
+router.param('pagoId', (req, res, next, val) =>
+    /^\d+$/.test(val) ? next() : res.status(400).json({ error: 'pagoId inválido' })
+);
+
+// PUT - Editar un pago
+router.put('/:id/pagos/:pagoId', ProyectosController.actualizarPagoProyecto);
+
+// DELETE - Eliminar un pago
+router.delete('/:id/pagos/:pagoId', ProyectosController.eliminarPagoProyecto);
+
 export default router;

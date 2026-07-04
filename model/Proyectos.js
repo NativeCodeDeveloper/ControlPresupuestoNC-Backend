@@ -396,6 +396,56 @@ export default class Proyectos {
         }
     }
 
+    // ELIMINAR PAGO DE PROYECTO (recalcula monto_pagado)
+    async deleteProyectoPago(pagoId) {
+        const conexion = DataBase.getInstance();
+        const proyectoIdColumn = await getProyectoIdColumn(conexion);
+        const proyectoFkColumn = await getProyectoPagoFkColumn(conexion);
+
+        const [pago] = await conexion.ejecutarQuery(
+            `SELECT ${proyectoFkColumn} AS proyecto_id FROM proyecto_pagos WHERE id_proyecto_pago = ?`,
+            [pagoId]
+        );
+        if (!pago) throw new Error('Pago no encontrado');
+
+        await conexion.ejecutarQuery(`DELETE FROM proyecto_pagos WHERE id_proyecto_pago = ?`, [pagoId]);
+
+        await conexion.ejecutarQuery(
+            `UPDATE proyectos SET monto_pagado = (
+                SELECT COALESCE(SUM(monto), 0) FROM proyecto_pagos WHERE ${proyectoFkColumn} = ?
+            ) WHERE ${proyectoIdColumn} = ?`,
+            [pago.proyecto_id, pago.proyecto_id]
+        );
+        return { ok: true };
+    }
+
+    // EDITAR PAGO DE PROYECTO (recalcula monto_pagado)
+    async updateProyectoPago(pagoId, concepto, monto, fecha_pago, numero_comprobante, notas) {
+        const conexion = DataBase.getInstance();
+        const proyectoIdColumn = await getProyectoIdColumn(conexion);
+        const proyectoFkColumn = await getProyectoPagoFkColumn(conexion);
+
+        const [pago] = await conexion.ejecutarQuery(
+            `SELECT ${proyectoFkColumn} AS proyecto_id FROM proyecto_pagos WHERE id_proyecto_pago = ?`,
+            [pagoId]
+        );
+        if (!pago) throw new Error('Pago no encontrado');
+
+        await conexion.ejecutarQuery(
+            `UPDATE proyecto_pagos SET concepto = ?, monto = ?, fecha_pago = ?, numero_comprobante = ?, notas = ?
+             WHERE id_proyecto_pago = ?`,
+            [concepto, monto, fecha_pago, numero_comprobante ?? null, notas ?? null, pagoId]
+        );
+
+        await conexion.ejecutarQuery(
+            `UPDATE proyectos SET monto_pagado = (
+                SELECT COALESCE(SUM(monto), 0) FROM proyecto_pagos WHERE ${proyectoFkColumn} = ?
+            ) WHERE ${proyectoIdColumn} = ?`,
+            [pago.proyecto_id, pago.proyecto_id]
+        );
+        return { ok: true };
+    }
+
     // GENERAR SIGUIENTE CODIGO INTERNO
     async getNextCodigoInterno(tipo_proyecto_id) {
         const conexion = DataBase.getInstance();

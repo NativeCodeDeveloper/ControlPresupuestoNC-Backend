@@ -349,4 +349,34 @@ export default class ProyectosController {
             return res.status(500).json({ message: "Error al registrar pago" });
         }
     }
+
+    // PUT /api/proyectos/:id/pagos/:pagoId — editar concepto, monto, fecha_pago, comprobante, notas
+    static async actualizarPagoProyecto(req, res) {
+        try {
+            const { pagoId } = req.params;
+            const { concepto, monto, fecha_pago, numero_comprobante, notas } = req.body;
+            if (!concepto || !monto || !fecha_pago) {
+                return res.status(400).json({ message: "Faltan datos requeridos (concepto, monto, fecha_pago)" });
+            }
+            const proyecto = new Proyectos();
+            const resultado = await proyecto.updateProyectoPago(pagoId, concepto, monto, fecha_pago, numero_comprobante ?? null, notas ?? null);
+            return res.json(resultado);
+        } catch (error) {
+            console.error("[ProyectosController.actualizarPagoProyecto]", error);
+            return res.status(500).json({ message: "Error al actualizar pago" });
+        }
+    }
+
+    // DELETE /api/proyectos/:id/pagos/:pagoId — elimina pago y recalcula monto_pagado
+    static async eliminarPagoProyecto(req, res) {
+        try {
+            const { pagoId } = req.params;
+            const proyecto = new Proyectos();
+            const resultado = await proyecto.deleteProyectoPago(pagoId);
+            return res.json(resultado);
+        } catch (error) {
+            console.error("[ProyectosController.eliminarPagoProyecto]", error);
+            return res.status(500).json({ message: "Error al eliminar pago" });
+        }
+    }
 }
