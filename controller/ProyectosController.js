@@ -210,13 +210,26 @@ export default class ProyectosController {
                 url_cobro_mercadopago
             } = req.body;
 
-            if (!id || !nombre || !nombre_cliente || !estado_proyecto_id) {
-                return res.status(400).json({ message: "Faltan datos requeridos (nombre, cliente o estado)" });
+            if (!id || !nombre || !nombre_cliente) {
+                return res.status(400).json({ message: "Faltan datos requeridos (nombre o cliente)" });
             }
 
             const proyecto = new Proyectos();
+
+            // Si el frontend no envió estado o tipo, conservamos los valores actuales de la BD
+            let estadoFinal = estado_proyecto_id || null;
+            let tipoFinal   = tipo_proyecto_id   || null;
+            if (!estadoFinal || !tipoFinal) {
+                const actual = await proyecto.selectProyectoById(id);
+                if (!estadoFinal) estadoFinal = actual?.estado_proyecto_id || actual?.id_estado_proyecto || null;
+                if (!tipoFinal)   tipoFinal   = actual?.tipo_proyecto_id   || actual?.id_tipo_proyecto   || null;
+            }
+            if (!estadoFinal) {
+                return res.status(400).json({ message: "No se pudo determinar el estado del proyecto" });
+            }
+
             const resultado = await proyecto.updateProyecto(
-                id, nombre, tipo_proyecto_id, estado_proyecto_id,
+                id, nombre, tipoFinal, estadoFinal,
                 nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
                 profesion_cliente, monto_acordado, fecha_entrega, observaciones,
                 ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago,
