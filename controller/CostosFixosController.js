@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import CostosFijos from "../model/CostosFijos.js";
 import { parsePagination } from "../utils/pagination.js";
 
@@ -127,6 +128,7 @@ export default class CostosFixosController {
 
             const costo = new CostosFijos();
             const resultado = await costo.insertCostoFijo(servicioIdFinal, proveedor, monto, frecuencia, fecha_pago, fechaInicioFinal, notas);
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CostosFixosController.crearCostoFijo]", error);
@@ -157,6 +159,7 @@ export default class CostosFixosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CostosFixosController.actualizarCostoFijo]", error);
@@ -185,6 +188,7 @@ export default class CostosFixosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo fijo no encontrado o eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CostosFixosController.desactivarCostoFijo]", error);
@@ -214,6 +218,7 @@ export default class CostosFixosController {
 
             // Devolver el registro actualizado para que el frontend actualice el estado sin refetch completo
             const actualizado = await costo.selectCostoFijoById(id);
+            emitUpdate('ncf:update');
             return res.json({ ok: true, fecha_ultimo_pago: fechaPago, costo: actualizado });
         } catch (error) {
             console.error("[CostosFixosController.registrarPago]", error);
@@ -240,6 +245,7 @@ export default class CostosFixosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo fijo no encontrado o ya eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[CostosFixosController.eliminarCostoFijo]", error);

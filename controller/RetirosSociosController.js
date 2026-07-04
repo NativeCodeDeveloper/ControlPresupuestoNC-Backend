@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import RetirosSocios from "../model/RetirosSocios.js";
 import Socios from "../model/Socios.js";
 import { getPartnerAvailableAmount } from "../services/financeService.js";
@@ -198,6 +199,7 @@ export default class RetirosSociosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Retiro no encontrado o ya eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, success: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[RetirosSociosController.eliminarRetiro]", error);

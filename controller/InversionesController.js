@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import Inversiones from "../model/Inversiones.js";
 import { getFinancialSummary } from "../services/financeService.js";
 import { parsePagination } from "../utils/pagination.js";
@@ -165,6 +166,7 @@ export default class InversionesController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Inversión no encontrada o ya eliminada" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, success: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[InversionesController.eliminarInversion]", error);

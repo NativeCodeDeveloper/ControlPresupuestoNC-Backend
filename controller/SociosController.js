@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import Socios from "../model/Socios.js";
 import { parsePagination } from "../utils/pagination.js";
 
@@ -81,6 +82,7 @@ export default class SociosController {
 
             const socio = new Socios();
             const resultado = await socio.insertSocio(nombre, porcentaje_participacion, email, telefono);
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[SociosController.crearSocio]", error);
@@ -110,6 +112,7 @@ export default class SociosController {
 
             const socio = new Socios();
             const resultado = await socio.updateSocio(id, nombre, porcentaje_participacion, email, telefono);
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[SociosController.actualizarSocio]", error);
@@ -136,6 +139,7 @@ export default class SociosController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Socio no encontrado o ya eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[SociosController.eliminarSocio]", error);
@@ -163,6 +167,7 @@ export default class SociosController {
 
             const socio = new Socios();
             const resultado = await socio.updatePorcentaje(id, porcentajeFinal);
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[SociosController.actualizarPorcentaje]", error);

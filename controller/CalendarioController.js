@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import * as Calendario from '../model/CalendarioModel.js';
 import DataBase from '../config/Database.js';
 
@@ -142,6 +143,7 @@ export default class CalendarioController {
         try {
             const ok = await Calendario.deleteEvento(Number(req.params.id));
             if (!ok) return res.status(404).json({ error: 'Evento no encontrado' });
+            emitUpdate('ncf:update');
             res.json({ ok: true });
         } catch (e) {
             console.error('[CALENDARIO] remove:', e.message);
@@ -176,6 +178,7 @@ export default class CalendarioController {
                 `UPDATE notificaciones_inapp SET visto = 1 WHERE id = ?`,
                 [Number(req.params.id)]
             );
+            emitUpdate('ncf:update');
             res.json({ ok: true });
         } catch (e) {
             console.error('[NOTIF]', e.message);
@@ -186,6 +189,7 @@ export default class CalendarioController {
     static async marcarTodasLeidas(req, res) {
         try {
             await db().ejecutarQuery(`UPDATE notificaciones_inapp SET visto = 1 WHERE visto = 0`, []);
+            emitUpdate('ncf:update');
             res.json({ ok: true });
         } catch (e) {
             console.error('[NOTIF]', e.message);
@@ -213,6 +217,7 @@ export default class CalendarioController {
                  ON DUPLICATE KEY UPDATE p256dh = VALUES(p256dh), auth = VALUES(auth)`,
                 [endpoint, keys.p256dh, keys.auth]
             );
+            emitUpdate('ncf:update');
             res.json({ ok: true });
         } catch (e) {
             console.error('[PUSH]', e.message);
@@ -228,6 +233,7 @@ export default class CalendarioController {
                     `DELETE FROM push_subscriptions WHERE endpoint = ?`, [endpoint]
                 );
             }
+            emitUpdate('ncf:update');
             res.json({ ok: true });
         } catch (e) {
             console.error('[PUSH]', e.message);

@@ -1,3 +1,4 @@
+import { emitUpdate } from '../config/socket.js';
 import CostosVariables from "../model/CostosVariables.js";
 import { parsePagination } from "../utils/pagination.js";
 
@@ -167,6 +168,7 @@ export default class CostosVariablesController {
                 comprobante_url,
                 observaciones
             );
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CostosVariablesController.crearCostoVariable]", error);
@@ -206,6 +208,7 @@ export default class CostosVariablesController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo variable no encontrado o eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[CostosVariablesController.actualizarCostoVariable]", error);
@@ -232,6 +235,7 @@ export default class CostosVariablesController {
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {
                 return res.status(404).json({ message: "Costo variable no encontrado o ya eliminado" });
             }
+            emitUpdate('ncf:update');
             return res.json({ ok: true, softDelete: true, resultado });
         } catch (error) {
             console.error("[CostosVariablesController.eliminarCostoVariable]", error);
