@@ -355,7 +355,10 @@ export async function getCockpitData({ mes, anio } = {}) {
             ${hasCockpitObs    ? 'p.cockpit_observaciones,'   : 'NULL AS cockpit_observaciones,'}
             ep.nombre                                          AS estado_nombre,
             ep.color_hex                                       AS estado_color,
-            COALESCE(pm.total, 0)                              AS total_pagado_mes
+            COALESCE(pm.total, 0)                              AS total_pagado_mes,
+            srv.ruta_backend                                   AS servidor_backserver,
+            srv.version                                        AS servidor_version,
+            srv.estado                                         AS servidor_estado
         FROM proyectos p
         LEFT JOIN estados_proyectos ep ON p.${estadoCol} = ep.${estadoPk}
         LEFT JOIN (
@@ -364,6 +367,12 @@ export async function getCockpitData({ mes, anio } = {}) {
             WHERE MONTH(fecha_pago) = ? AND YEAR(fecha_pago) = ?
             GROUP BY id_proyecto
         ) pm ON p.${idCol} = pm.id_proyecto
+        LEFT JOIN synapse_servidores srv
+            ON srv.id_servidor = (
+                SELECT id_servidor FROM synapse_servidores
+                WHERE id_proyecto = p.${idCol} AND activo = 1
+                ORDER BY id_servidor DESC LIMIT 1
+            )
         WHERE p.activo = 1
           AND (p.observaciones IS NULL OR p.observaciones NOT LIKE '[ELIMINADO]#%')
         ORDER BY p.nombre_cliente ASC
