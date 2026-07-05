@@ -4,10 +4,14 @@ import ActualizacionesController from '../controller/ActualizacionesController.j
 
 const router = Router();
 
-// Estados
+// Estados (rutas estáticas primero)
 router.get('/estados',          SoporteController.listarEstados);
 router.post('/estados',         SoporteController.crearEstado);
 router.delete('/estados/:id',   SoporteController.eliminarEstado);
+
+// Actualizaciones (rutas estáticas ANTES de /:id para evitar shadowing)
+router.get('/actualizaciones',         ActualizacionesController.listar);
+router.post('/actualizaciones/enviar', ActualizacionesController.enviar);
 
 // Tickets
 router.get('/',          SoporteController.listar);
@@ -23,9 +27,5 @@ router.post('/:id/actividad/comentario',  SoporteController.agregarComentario);
 // Email
 router.get('/:id/email/preview',   SoporteController.previewEmail);
 router.post('/:id/email/enviar',   SoporteController.enviarEmail);
-
-// Actualizaciones del sistema (broadcast)
-router.get('/actualizaciones',        ActualizacionesController.listar);
-router.post('/actualizaciones/enviar', ActualizacionesController.enviar);
 
 export default router;

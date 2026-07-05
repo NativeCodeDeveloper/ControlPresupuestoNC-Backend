@@ -126,7 +126,7 @@ export async function updateTicket(id, campos) {
     const sets = [], params = [];
 
     for (const [k, v] of Object.entries(campos)) {
-        if (permitidos.includes(k)) { sets.push(`${k} = ?`); params.push(v); }
+        if (permitidos.includes(k) && v !== undefined) { sets.push(`${k} = ?`); params.push(v); }
     }
     if (!sets.length) return;
 

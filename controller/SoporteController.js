@@ -233,7 +233,16 @@ export default class SoporteController {
             let result;
 
             if (tipo === 'cierre') {
-                result = await enviarCierre({ ticket, resolucion: ticket, bodyText: body_text });
+                result = await enviarCierre({
+                    ticket,
+                    resolucion: {
+                        causa:         ticket.resolucion_causa,
+                        accion:        ticket.resolucion_accion,
+                        resultado:     ticket.resolucion_resultado,
+                        observaciones: ticket.resolucion_observaciones,
+                    },
+                    bodyText: body_text,
+                });
                 if (result.ok) {
                     await Soporte.addActividad({ id_ticket: ticket.id_ticket, tipo: 'cierre', contenido: 'Email de cierre enviado al cliente', id_socio });
                 }
