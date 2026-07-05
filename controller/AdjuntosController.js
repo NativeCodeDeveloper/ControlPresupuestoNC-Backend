@@ -4,7 +4,7 @@ import path from 'path';
 import * as Adjuntos from '../model/Adjuntos.js';
 import { r2Client, R2_BUCKET } from '../config/r2Config.js';
 
-const ENTIDADES_VALIDAS = new Set(['tarea', 'team', 'iniciativa']);
+const ENTIDADES_VALIDAS = new Set(['tarea', 'team', 'iniciativa', 'proyecto', 'costo_fijo', 'costo_variable']);
 
 export default class AdjuntosController {
 
