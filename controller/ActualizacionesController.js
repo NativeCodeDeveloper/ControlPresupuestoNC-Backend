@@ -1,8 +1,8 @@
 import * as Actualizaciones from '../model/ActualizacionesModel.js';
 import { sendBrevoEmail } from '../services/emailUtils.js';
 
-const SENDER_NAME  = process.env.EMAIL_SENDER_NAME  || 'NativeCode Finance';
-const SENDER_EMAIL = process.env.EMAIL_SENDER_EMAIL  || 'no-reply@nativecode.cl';
+const SENDER_NAME  = process.env.EMAIL_SENDER_NAME   || 'NativeCode Finance';
+const SENDER_EMAIL = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
 
 function buildHtml(titulo, mensaje, nombreCliente) {
     return `<!DOCTYPE html>
@@ -91,6 +91,11 @@ export default class ActualizacionesController {
             if (!mensaje?.trim())  return res.status(400).json({ message: 'Mensaje requerido' });
             if (!Array.isArray(destinatarios) || !destinatarios.length)
                 return res.status(400).json({ message: 'Selecciona al menos un destinatario' });
+
+            if (!SENDER_EMAIL) {
+                console.warn('[ACTUALIZACIÓN] Sin email remitente configurado (BILLING_REMINDER_TO).');
+                return res.status(500).json({ message: 'Email remitente no configurado en el servidor' });
+            }
 
             let enviados = 0, errores = 0;
 
