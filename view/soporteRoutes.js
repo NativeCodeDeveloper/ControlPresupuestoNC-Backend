@@ -14,9 +14,14 @@ router.get('/actualizaciones/estados',        ActualizacionesController.listarEs
 router.post('/actualizaciones/estados',       ActualizacionesController.crearEstado);
 router.delete('/actualizaciones/estados/:id', ActualizacionesController.eliminarEstado);
 
-// Actualizaciones
-router.get('/actualizaciones',         ActualizacionesController.listar);
-router.post('/actualizaciones/enviar', ActualizacionesController.enviar);
+// Actualizaciones — CRUD + acciones (estáticas antes de /:id)
+router.get('/actualizaciones',                    ActualizacionesController.listar);
+router.post('/actualizaciones',                   ActualizacionesController.crear);
+router.post('/actualizaciones/enviar',            ActualizacionesController.enviar);
+router.get('/actualizaciones/:id',                ActualizacionesController.obtener);
+router.put('/actualizaciones/:id',                ActualizacionesController.actualizar);
+router.delete('/actualizaciones/:id',             ActualizacionesController.eliminar);
+router.post('/actualizaciones/:id/notificar',     ActualizacionesController.notificar);
 
 // Tickets
 router.get('/',          SoporteController.listar);

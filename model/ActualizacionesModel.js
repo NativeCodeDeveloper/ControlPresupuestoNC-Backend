@@ -47,13 +47,50 @@ export async function getActualizaciones({ estado } = {}) {
     );
 }
 
-export async function createActualizacion({ titulo, mensaje, destinatarios, total_enviados, total_errores, id_socio, id_estado, prioridad, modo }) {
-    return db().ejecutarQuery(
+export async function getActualizacion(id) {
+    const rows = await db().ejecutarQuery(
+        `SELECT a.*, s.nombre AS socio_nombre,
+                e.nombre AS estado_nombre, e.color_hex AS estado_color
+         FROM nexus_actualizaciones a
+         LEFT JOIN socios s ON a.id_socio = s.id_socio
+         LEFT JOIN nexus_actualizacion_estados e ON a.id_estado = e.id_estado
+         WHERE a.id_actualizacion = ?`,
+        [id]
+    );
+    return rows?.[0] ?? null;
+}
+
+export async function createActualizacion({ titulo, mensaje, destinatarios, id_socio, id_estado, prioridad, modo }) {
+    const result = await db().ejecutarQuery(
         `INSERT INTO nexus_actualizaciones
          (titulo, mensaje, destinatarios, total_enviados, total_errores, id_socio, id_estado, prioridad, modo)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [titulo, mensaje, JSON.stringify(destinatarios),
-         total_enviados ?? 0, total_errores ?? 0, id_socio ?? null,
-         id_estado ?? null, prioridad ?? 'media', modo ?? 'masivo']
+         VALUES (?, ?, ?, 0, 0, ?, ?, ?, ?)`,
+        [titulo, mensaje, JSON.stringify(destinatarios ?? []),
+         id_socio ?? null, id_estado ?? null, prioridad ?? 'media', modo ?? 'masivo']
+    );
+    return result?.insertId ?? null;
+}
+
+export async function updateActualizacion(id, campos) {
+    const permitidos = ['id_estado', 'titulo', 'mensaje', 'prioridad', 'modo',
+                        'destinatarios', 'total_enviados', 'total_errores'];
+    const sets = [], params = [];
+    for (const [k, v] of Object.entries(campos)) {
+        if (permitidos.includes(k) && v !== undefined) {
+            sets.push(`${k} = ?`);
+            params.push(k === 'destinatarios' && typeof v !== 'string' ? JSON.stringify(v) : v);
+        }
+    }
+    if (!sets.length) return;
+    params.push(id);
+    return db().ejecutarQuery(
+        `UPDATE nexus_actualizaciones SET ${sets.join(', ')} WHERE id_actualizacion = ?`,
+        params
+    );
+}
+
+export async function deleteActualizacion(id) {
+    return db().ejecutarQuery(
+        `DELETE FROM nexus_actualizaciones WHERE id_actualizacion = ?`, [id]
     );
 }

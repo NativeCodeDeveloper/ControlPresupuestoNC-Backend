@@ -38,7 +38,7 @@ Fecha de creación: ${formatFecha(ticket.creado_en)}
 Nuestro equipo se encuentra revisando su caso y nos comunicaremos con usted una vez exista una actualización.
 
 Atentamente,
-Equipo de Soporte NativeCode`
+Equipo de Soporte — Agenda Clínica / NativeCode`
     };
 }
 
@@ -55,7 +55,7 @@ Estado actual: ${nuevoEstado}
 Continuamos trabajando en su caso. Le notificaremos ante cualquier novedad.
 
 Atentamente,
-Equipo de Soporte NativeCode`
+Equipo de Soporte — Agenda Clínica / NativeCode`
     };
 }
 
@@ -80,7 +80,7 @@ ${detalle ? `Resolución:\n${detalle}` : 'El caso ha sido resuelto satisfactoria
 Si requiere asistencia adicional, puede responder directamente a este correo y con gusto revisaremos nuevamente su caso.
 
 Atentamente,
-Equipo de Soporte NativeCode`
+Equipo de Soporte — Agenda Clínica / NativeCode`
     };
 }
 
@@ -91,7 +91,7 @@ function buildHtml({ numero_ticket, asunto, bodyText, accentColor = '#7c3aed' })
     return `
     <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:540px;margin:0 auto;background:#0f0f0f;border-radius:12px;overflow:hidden;">
         <div style="background:${accentColor};padding:20px 24px;">
-            <p style="margin:0;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;">NativeCode — Soporte Técnico</p>
+            <p style="margin:0;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;">NativeCode · Agenda Clínica — Soporte Técnico</p>
             <h1 style="margin:6px 0 0;color:#fff;font-size:18px;font-weight:700;">${asunto}</h1>
             <p style="margin:4px 0 0;color:#fff;font-size:12px;opacity:0.6;">Ticket N° ${numero_ticket}</p>
         </div>
@@ -99,7 +99,7 @@ function buildHtml({ numero_ticket, asunto, bodyText, accentColor = '#7c3aed' })
             ${lines}
         </div>
         <div style="padding:12px 24px;border-top:1px solid #1f1f1f;">
-            <p style="margin:0;color:#555;font-size:11px;">NativeCode · Soporte Técnico</p>
+            <p style="margin:0;color:#555;font-size:11px;">NativeCode · Agenda Clínica · Plataforma de gestión médica</p>
         </div>
     </div>`;
 }
@@ -116,7 +116,7 @@ export async function enviarApertura({ ticket, bodyText }) {
     const accentColor = ticket.prioridad === 'critica' ? '#ef4444' : ticket.prioridad === 'alta' ? '#f59e0b' : '#7c3aed';
 
     const ok = await sendBrevoEmail({
-        senderName: 'NativeCode Soporte',
+        senderName: 'Agenda Clínica Soporte',
         senderEmail,
         to: ticket.email_cliente,
         subject: template.subject,
@@ -137,7 +137,7 @@ export async function enviarActualizacion({ ticket, nuevoEstado, bodyText }) {
     const texto = bodyText ?? template.body;
 
     const ok = await sendBrevoEmail({
-        senderName: 'NativeCode Soporte',
+        senderName: 'Agenda Clínica Soporte',
         senderEmail,
         to: ticket.email_cliente,
         subject: template.subject,
@@ -164,7 +164,7 @@ export async function enviarCierre({ ticket, resolucion, bodyText }) {
     }
 
     const ok = await sendBrevoEmail({
-        senderName: 'NativeCode Soporte',
+        senderName: 'Agenda Clínica Soporte',
         senderEmail,
         to: ticket.email_cliente,
         subject: template.subject,
