@@ -11,11 +11,11 @@ router.param('id', (req, res, next, val) =>
 // Subir archivo: POST /api/adjuntos  body: { entidad, id_entidad } + file
 router.post('/',                        upload.single('file'), AdjuntosController.upload);
 
+// Descargar: GET /api/adjuntos/file/:id  — DEBE ir antes de /:entidad/:id
+router.get('/file/:id',                 AdjuntosController.download);
+
 // Listar adjuntos de una entidad: GET /api/adjuntos/:entidad/:id
 router.get('/:entidad/:id',             AdjuntosController.list);
-
-// Descargar: GET /api/adjuntos/file/:id
-router.get('/file/:id',                 AdjuntosController.download);
 
 // Eliminar: DELETE /api/adjuntos/:id
 router.delete('/:id',                   AdjuntosController.remove);
