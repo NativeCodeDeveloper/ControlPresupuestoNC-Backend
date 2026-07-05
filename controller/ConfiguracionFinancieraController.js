@@ -40,7 +40,7 @@ export default class ConfiguracionFinancieraController {
      */
     static async actualizarConfiguracion(req, res) {
         try {
-            const { porcentaje_fondo_emergencia, porcentaje_reinversion } = req.body;
+            const { porcentaje_fondo_emergencia, porcentaje_reinversion, tasa_ppm } = req.body;
 
             // Validar que ambos campos estén presentes
             if (porcentaje_fondo_emergencia === undefined || porcentaje_reinversion === undefined) {
@@ -49,6 +49,7 @@ export default class ConfiguracionFinancieraController {
 
             const emergencia = Number(porcentaje_fondo_emergencia);
             const reinversion = Number(porcentaje_reinversion);
+            const ppm = tasa_ppm !== undefined ? Number(tasa_ppm) : 1;
 
             // Validar que sean números finitos (no NaN, no Infinity)
             if (!Number.isFinite(emergencia) || !Number.isFinite(reinversion)) {
@@ -61,7 +62,7 @@ export default class ConfiguracionFinancieraController {
             }
 
             const config = new ConfiguracionFinanciera();
-            const resultado = await config.updateConfig(emergencia, reinversion);
+            const resultado = await config.updateConfig(emergencia, reinversion, ppm);
 
             // Leer la configuración actualizada para retornarla al frontend inmediatamente
             const data = await config.selectConfig();

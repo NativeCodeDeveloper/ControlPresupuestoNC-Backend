@@ -52,34 +52,51 @@ export default class ConfiguracionFinanciera {
     }
 
     // ACTUALIZAR CONFIGURACIÓN FINANCIERA
-    async updateConfig(porcentaje_fondo_emergencia, porcentaje_reinversion) {
+    async updateConfig(porcentaje_fondo_emergencia, porcentaje_reinversion, tasa_ppm) {
         const conexion = DataBase.getInstance();
         try {
             const idColumn = await this.getIdColumn();
             const emergencia = Number(porcentaje_fondo_emergencia);
             const reinversion = Number(porcentaje_reinversion);
+            const ppm = tasa_ppm !== undefined ? Number(tasa_ppm) : 1;
 
             if (!Number.isFinite(emergencia) || !Number.isFinite(reinversion)) {
                 throw new Error("Porcentajes inválidos");
             }
 
-            const query = idColumn === "id_configuracion_financiera"
-                ? `INSERT INTO configuracion_financiera (id_configuracion_financiera, porcentaje_fondo_emergencia, porcentaje_reinversion)
-                   VALUES (1, ?, ?)
-                   ON DUPLICATE KEY UPDATE
-                       porcentaje_fondo_emergencia = VALUES(porcentaje_fondo_emergencia),
-                       porcentaje_reinversion = VALUES(porcentaje_reinversion)`
-                : `INSERT INTO configuracion_financiera (id, porcentaje_fondo_emergencia, porcentaje_reinversion)
-                   VALUES (1, ?, ?)
-                   ON DUPLICATE KEY UPDATE
-                       porcentaje_fondo_emergencia = VALUES(porcentaje_fondo_emergencia),
-                       porcentaje_reinversion = VALUES(porcentaje_reinversion)`;
+            const hasPpm = await this._hasColumn(conexion, 'tasa_ppm');
 
-            const resultado = await conexion.ejecutarQuery(query, [emergencia, reinversion]);
+            const cols = idColumn === "id_configuracion_financiera"
+                ? `id_configuracion_financiera, porcentaje_fondo_emergencia, porcentaje_reinversion`
+                : `id, porcentaje_fondo_emergencia, porcentaje_reinversion`;
+            const vals = [1, emergencia, reinversion];
+            const updates = `porcentaje_fondo_emergencia = VALUES(porcentaje_fondo_emergencia), porcentaje_reinversion = VALUES(porcentaje_reinversion)`;
+
+            let query, params;
+            if (hasPpm) {
+                query = `INSERT INTO configuracion_financiera (${cols}, tasa_ppm) VALUES (?, ?, ?, ?)
+                         ON DUPLICATE KEY UPDATE ${updates}, tasa_ppm = VALUES(tasa_ppm)`;
+                params = [...vals, ppm];
+            } else {
+                query = `INSERT INTO configuracion_financiera (${cols}) VALUES (?, ?, ?)
+                         ON DUPLICATE KEY UPDATE ${updates}`;
+                params = vals;
+            }
+
+            const resultado = await conexion.ejecutarQuery(query, params);
             return resultado;
         } catch (error) {
             throw new Error('Error al actualizar configuración financiera');
         }
+    }
+
+    async _hasColumn(conexion, columnName) {
+        const rows = await conexion.ejecutarQuery(
+            `SELECT COLUMN_NAME FROM information_schema.COLUMNS
+             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'configuracion_financiera' AND COLUMN_NAME = ?`,
+            [columnName]
+        );
+        return Array.isArray(rows) && rows.length > 0;
     }
 
     // OBTENER CONFIG COCKPIT (meta_mensual + cockpit_columnas)
