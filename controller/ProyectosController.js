@@ -165,6 +165,7 @@ export default class ProyectosController {
                 codigoFinal = await proyecto.getNextCodigoInterno(tipo_proyecto_id);
             }
 
+            const { afecto_iva } = req.body;
             const resultado = await proyecto.insertProyecto(
                 codigoFinal, nombre, tipo_proyecto_id, estado_proyecto_id,
                 nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
@@ -172,7 +173,8 @@ export default class ProyectosController {
                 fecha_creacion || new Date().toISOString().split('T')[0],
                 fecha_entrega || null, observaciones,
                 ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null,
-                url_cobro_mercadopago || null
+                url_cobro_mercadopago || null,
+                afecto_iva !== undefined ? afecto_iva : 1
             );
             emitUpdate('ncf:update');
             return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
@@ -228,12 +230,14 @@ export default class ProyectosController {
                 return res.status(400).json({ message: "No se pudo determinar el estado del proyecto" });
             }
 
+            const afecto_iva = req.body.afecto_iva;
             const resultado = await proyecto.updateProyecto(
                 id, nombre, tipoFinal, estadoFinal,
                 nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
                 profesion_cliente, monto_acordado, fecha_entrega, observaciones,
                 ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago,
-                url_cobro_mercadopago ?? null
+                url_cobro_mercadopago ?? null,
+                afecto_iva !== undefined ? afecto_iva : 1
             );
             // affectedRows=0 indica que el proyecto no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {

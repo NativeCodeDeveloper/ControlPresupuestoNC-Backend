@@ -1554,3 +1554,96 @@ export async function getFlujoCajaAnual(query = {}) {
 
     return { año: safeYear, meses, totales };
 }
+
+// ─── CÁLCULO F29 ──────────────────────────────────────────────────────────────
+
+export async function calcularF29(query = {}) {
+    const conexion = DataBase.getInstance();
+    const { mes, año } = getPeriodFromQuery(query);
+    const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
+    const lastDay = new Date(año, mes, 0).getDate();
+    const endDate = `${año}-${String(mes).padStart(2, '0')}-${lastDay}`;
+
+    const IVA = 0.19;
+
+    // Columnas dinámicas para proyecto_pagos
+    const fkCol = await getPagosProyectoFkColumn(conexion);
+    const proyectoPk = await getProyectoPkColumn(conexion);
+
+    // Débito Fiscal: pagos de proyectos afectos a IVA en el período
+    const [debitoRow] = await safeQuery(
+        conexion,
+        `SELECT COALESCE(SUM(pp.monto), 0) AS total
+         FROM proyecto_pagos pp
+         JOIN proyectos p ON pp.${fkCol} = p.${proyectoPk}
+         WHERE pp.fecha_pago BETWEEN ? AND ?
+           AND COALESCE(p.afecto_iva, 1) = 1`,
+        [startDate, endDate],
+        [{ total: 0 }]
+    );
+    const baseDebito = Number(debitoRow?.total || 0);
+    const debitoFiscal = Math.round(baseDebito * IVA);
+
+    // Crédito Fiscal fijos: todos los costos fijos activos en el período
+    const fixedData = await getFixedCostsData(conexion);
+    const startObj = new Date(startDate);
+    const endObj = new Date(endDate);
+    let baseCreditoFijos = 0;
+    for (const cost of fixedData) {
+        const inicio = cost.fecha_inicio ? new Date(cost.fecha_inicio) : null;
+        const fin = cost.fecha_fin ? new Date(cost.fecha_fin) : null;
+        if (inicio && inicio > endObj) continue;
+        if (fin && fin < startObj) continue;
+        baseCreditoFijos += Number(cost.monto || 0);
+    }
+    const creditoFiscalFijos = Math.round(baseCreditoFijos * IVA);
+
+    // Crédito Fiscal variables: solo los que tienen con_factura = 1
+    const varFilter = await getCostosVariablesNotDeletedFilter(conexion);
+    const varWhere = ["fecha BETWEEN ? AND ?", "COALESCE(con_factura, 1) = 1"];
+    const varParams = [startDate, endDate];
+    if (varFilter.whereClause) {
+        varWhere.push(varFilter.whereClause);
+        varParams.push(...varFilter.params);
+    }
+    const [varRow] = await safeQuery(
+        conexion,
+        `SELECT COALESCE(SUM(monto), 0) AS total FROM costos_variables WHERE ${varWhere.join(" AND ")}`,
+        varParams,
+        [{ total: 0 }]
+    );
+    const baseCreditoVariables = Number(varRow?.total || 0);
+    const creditoFiscalVariables = Math.round(baseCreditoVariables * IVA);
+
+    const creditoFiscalTotal = creditoFiscalFijos + creditoFiscalVariables;
+    const ivaNeto = Math.max(0, debitoFiscal - creditoFiscalTotal);
+    const remanente = Math.max(0, creditoFiscalTotal - debitoFiscal);
+
+    // PPM: tasa configurable sobre ingresos brutos afectos
+    const config = await getFinancialConfigRow(conexion);
+    const tasaPpm = Number(config?.tasa_ppm || 1) / 100;
+    const ppm = Math.round(baseDebito * tasaPpm);
+
+    const totalF29 = ivaNeto + ppm;
+
+    // Fecha de vencimiento: día 20 del mes siguiente
+    const mesVenc = mes === 12 ? 1 : mes + 1;
+    const añoVenc = mes === 12 ? año + 1 : año;
+    const vencimiento = `${añoVenc}-${String(mesVenc).padStart(2, '0')}-20`;
+
+    return {
+        periodo: { mes, año },
+        iva_tasa: IVA,
+        debito_fiscal: { base: baseDebito, iva: debitoFiscal },
+        credito_fiscal: {
+            fijos: { base: baseCreditoFijos, iva: creditoFiscalFijos },
+            variables: { base: baseCreditoVariables, iva: creditoFiscalVariables },
+            total: creditoFiscalTotal
+        },
+        iva_neto: ivaNeto,
+        remanente,
+        ppm: { tasa: Number(config?.tasa_ppm || 1), monto: ppm },
+        total_f29: totalF29,
+        vencimiento,
+    };
+}

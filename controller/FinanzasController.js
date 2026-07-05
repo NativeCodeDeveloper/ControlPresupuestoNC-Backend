@@ -1,7 +1,8 @@
 import {
     getFinancialSummary,
     getUpcomingDueItems,
-    getFlujoCajaAnual
+    getFlujoCajaAnual,
+    calcularF29
 } from "../services/financeService.js";
 
 /**
@@ -65,6 +66,21 @@ export default class FinanzasController {
         } catch (error) {
             console.error("[FinanzasController.obtenerFlujoCaja]", error);
             return res.status(500).json({ message: "Error al obtener flujo de caja" });
+        }
+    }
+
+    /**
+     * obtenerF29 - Proyección del Formulario 29 para un período.
+     * Ruta: GET /api/finanzas/f29
+     * Query: mes (1-12), año (ej. 2025)
+     */
+    static async obtenerF29(req, res) {
+        try {
+            const data = await calcularF29(req.query || {});
+            return res.json(data);
+        } catch (error) {
+            console.error("[FinanzasController.obtenerF29]", error);
+            return res.status(500).json({ message: "Error al calcular F29" });
         }
     }
 }

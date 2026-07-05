@@ -130,7 +130,7 @@ export default class CostosVariablesController {
      */
     static async crearCostoVariable(req, res) {
         try {
-            const { tipo_costo_id, tipo, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones } = req.body;
+            const { tipo_costo_id, tipo, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones, con_factura } = req.body;
 
             // Si no viene tipo_costo_id pero sí el nombre del tipo, buscar o crear el tipo dinámicamente
             let tipoCostoIdFinal = tipo_costo_id;
@@ -166,7 +166,8 @@ export default class CostosVariablesController {
                 fecha_vencimiento || null,
                 proyecto_id || null,
                 comprobante_url,
-                observaciones
+                observaciones,
+                con_factura !== undefined ? con_factura : 1
             );
             emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
@@ -186,7 +187,7 @@ export default class CostosVariablesController {
     static async actualizarCostoVariable(req, res) {
         try {
             const { id } = req.params;
-            const { tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones } = req.body;
+            const { tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones, con_factura } = req.body;
 
             if (!id || !tipo_costo_id || !concepto || !monto) {
                 return res.status(404).json({ message: "Faltan datos requeridos" });
@@ -202,7 +203,8 @@ export default class CostosVariablesController {
                 fecha_vencimiento || null,
                 proyecto_id,
                 comprobante_url,
-                observaciones
+                observaciones,
+                con_factura !== undefined ? con_factura : 1
             );
             // affectedRows=0 indica que el registro no existe o fue eliminado
             if (!resultado || Number(resultado.affectedRows || 0) === 0) {

@@ -224,18 +224,18 @@ export default class CostosVariables {
     }
 
     // CREAR NUEVO COSTO VARIABLE
-    async insertCostoVariable(tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones) {
+    async insertCostoVariable(tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones, con_factura = 1) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasCostosVariablesColumn(conexion, "activo");
             const tipoColumn = await getCostoVariableTipoColumn(conexion);
             const proyectoColumn = await getCostoVariableProyectoColumn(conexion);
             const query = hasActivo
-                ? `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, fecha_vencimiento, comprobante_url, observaciones, activo)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
-                : `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, fecha_vencimiento, comprobante_url, observaciones)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
-            const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones];
+                ? `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, fecha_vencimiento, comprobante_url, observaciones, con_factura, activo)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)`
+                : `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, fecha_vencimiento, comprobante_url, observaciones, con_factura)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`;
+            const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones, con_factura ? 1 : 0];
 
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
@@ -246,11 +246,11 @@ export default class CostosVariables {
                 const tipoColumn = await getCostoVariableTipoColumn(conexion);
                 const proyectoColumn = await getCostoVariableProyectoColumn(conexion);
                 const fallbackQuery = hasActivo
-                    ? `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, comprobante_url, observaciones, activo)
-                       VALUES (?, ?, ?, ?, ?, ?, ?, 1)`
-                    : `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, comprobante_url, observaciones)
-                       VALUES (?, ?, ?, ?, ?, ?, ?)`;
-                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones];
+                    ? `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, comprobante_url, observaciones, con_factura, activo)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1)`
+                    : `INSERT INTO costos_variables (${tipoColumn}, ${proyectoColumn}, concepto, monto, fecha, comprobante_url, observaciones, con_factura)
+                       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
+                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones, con_factura ? 1 : 0];
                 return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
             } catch (_) {
                 throw new Error('Error al crear costo variable en la base de datos');
@@ -259,7 +259,7 @@ export default class CostosVariables {
     }
 
     // ACTUALIZAR COSTO VARIABLE
-    async updateCostoVariable(id, tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones) {
+    async updateCostoVariable(id, tipo_costo_id, concepto, monto, fecha, fecha_vencimiento, proyecto_id, comprobante_url, observaciones, con_factura = 1) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasCostosVariablesColumn(conexion, "activo");
@@ -268,7 +268,7 @@ export default class CostosVariables {
             const tipoColumn = await getCostoVariableTipoColumn(conexion);
             const proyectoColumn = await getCostoVariableProyectoColumn(conexion);
             const where = [`${idColumn} = ?`];
-            const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones, id];
+            const param = [tipo_costo_id, proyecto_id, concepto, monto, fecha, fecha_vencimiento || null, comprobante_url, observaciones, con_factura ? 1 : 0, id];
 
             if (hasActivo) {
                 where.push("activo = 1");
@@ -278,7 +278,7 @@ export default class CostosVariables {
             }
 
             const query = `UPDATE costos_variables SET ${tipoColumn} = ?, ${proyectoColumn} = ?, concepto = ?, monto = ?,
-                           fecha = ?, fecha_vencimiento = ?, comprobante_url = ?, observaciones = ? WHERE ${where.join(" AND ")}`;
+                           fecha = ?, fecha_vencimiento = ?, comprobante_url = ?, observaciones = ?, con_factura = ? WHERE ${where.join(" AND ")}`;
 
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
@@ -290,7 +290,7 @@ export default class CostosVariables {
                 const tipoColumn = await getCostoVariableTipoColumn(conexion);
                 const proyectoColumn = await getCostoVariableProyectoColumn(conexion);
                 const where = [`${idColumn} = ?`];
-                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones, id];
+                const fallbackParam = [tipo_costo_id, proyecto_id, concepto, monto, fecha, comprobante_url, observaciones, con_factura ? 1 : 0, id];
 
                 if (hasActivo) {
                     where.push("activo = 1");
@@ -300,7 +300,7 @@ export default class CostosVariables {
                 }
 
                 const fallbackQuery = `UPDATE costos_variables SET ${tipoColumn} = ?, ${proyectoColumn} = ?, concepto = ?, monto = ?,
-                                       fecha = ?, comprobante_url = ?, observaciones = ? WHERE ${where.join(" AND ")}`;
+                                       fecha = ?, comprobante_url = ?, observaciones = ?, con_factura = ? WHERE ${where.join(" AND ")}`;
                 return await conexion.ejecutarQuery(fallbackQuery, fallbackParam);
             } catch (_) {
                 throw new Error('Error al actualizar costo variable en la base de datos');
