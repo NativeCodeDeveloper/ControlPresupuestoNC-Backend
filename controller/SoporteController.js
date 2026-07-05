@@ -171,7 +171,15 @@ export default class SoporteController {
             const tipo = req.query.tipo ?? 'apertura';
             let template;
             if (tipo === 'cierre') {
-                template = templateCierre({ ticket, resolucion: ticket });
+                template = templateCierre({
+                    ticket,
+                    resolucion: {
+                        causa:         ticket.resolucion_causa,
+                        accion:        ticket.resolucion_accion,
+                        resultado:     ticket.resolucion_resultado,
+                        observaciones: ticket.resolucion_observaciones,
+                    }
+                });
             } else if (tipo === 'actualizacion') {
                 template = templateActualizacion({ ticket, nuevoEstado: ticket.estado_nombre });
             } else {
@@ -181,6 +189,30 @@ export default class SoporteController {
             res.json({ subject: template.subject, body: template.body });
         } catch (e) {
             res.status(500).json({ message: 'Error generando preview' });
+        }
+    }
+
+    // ─── CRUD Estados ─────────────────────────────────────────────────────────
+
+    static async crearEstado(req, res) {
+        try {
+            const { nombre, color_hex, es_cierre } = req.body;
+            if (!nombre?.trim()) return res.status(400).json({ message: 'Nombre requerido' });
+            await Soporte.createEstado({ nombre: nombre.trim(), color_hex: color_hex ?? '#6b7280', es_cierre: es_cierre ? 1 : 0 });
+            const estados = await Soporte.getEstados();
+            res.status(201).json({ ok: true, estados });
+        } catch (e) {
+            res.status(500).json({ message: 'Error al crear estado' });
+        }
+    }
+
+    static async eliminarEstado(req, res) {
+        try {
+            await Soporte.deleteEstado(req.params.id);
+            const estados = await Soporte.getEstados();
+            res.json({ ok: true, estados });
+        } catch (e) {
+            res.status(500).json({ message: 'Error al eliminar estado' });
         }
     }
 

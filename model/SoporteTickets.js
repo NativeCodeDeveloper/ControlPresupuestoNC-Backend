@@ -47,6 +47,20 @@ export async function getEstadoById(id) {
     return rows?.[0] ?? null;
 }
 
+export async function createEstado({ nombre, color_hex, es_cierre }) {
+    const [maxRow] = await db().ejecutarQuery(`SELECT COALESCE(MAX(orden),0)+1 AS next FROM soporte_estados`, []) ?? [{ next: 1 }];
+    return db().ejecutarQuery(
+        `INSERT INTO soporte_estados (nombre, color_hex, orden, es_cierre) VALUES (?, ?, ?, ?)`,
+        [nombre, color_hex ?? '#6b7280', maxRow?.next ?? 1, es_cierre ? 1 : 0]
+    );
+}
+
+export async function deleteEstado(id) {
+    return db().ejecutarQuery(
+        `UPDATE soporte_estados SET activo = 0 WHERE id_estado = ?`, [id]
+    );
+}
+
 // ─── Tickets — CRUD ───────────────────────────────────────────────────────────
 
 export async function getTickets({ estado, prioridad, responsable } = {}) {

@@ -4,7 +4,9 @@ import SoporteController from '../controller/SoporteController.js';
 const router = Router();
 
 // Estados
-router.get('/estados', SoporteController.listarEstados);
+router.get('/estados',          SoporteController.listarEstados);
+router.post('/estados',         SoporteController.crearEstado);
+router.delete('/estados/:id',   SoporteController.eliminarEstado);
 
 // Tickets
 router.get('/',          SoporteController.listar);
