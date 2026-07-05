@@ -74,6 +74,20 @@ export async function getEntradaByProyecto(id_proyecto) {
 }
 
 export async function createEntrada(data) {
+    // Auto-poblar desde synapse_servidores si el proyecto tiene BackServer asignado
+    if (data.id_proyecto) {
+        const [srv] = await db().ejecutarQuery(`
+            SELECT ruta_backend, version
+            FROM synapse_servidores
+            WHERE id_proyecto = ? AND activo = 1
+            ORDER BY id_servidor DESC LIMIT 1
+        `, [data.id_proyecto]);
+        if (srv) {
+            if (!data.ruta_backend  && srv.ruta_backend) data.ruta_backend  = srv.ruta_backend;
+            if (!data.version_actual && srv.version)     data.version_actual = srv.version;
+        }
+    }
+
     const enc = encryptFields(data, ENCRYPTED_ENTRY);
     const campos = [
         'id_proyecto','hostname','ssh_usuario','ssh_clave','ssh_puerto',
