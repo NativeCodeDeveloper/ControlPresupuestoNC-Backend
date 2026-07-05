@@ -365,6 +365,18 @@ export default class AdminController {
                 'UPDATE synapse_servidores SET pm2_process = ?, id_monitor_server = ? WHERE id_servidor = ? AND activo = 1',
                 [safeProcess, safeServer, id]
             );
+
+            // Sync → Bóveda: actualizar proceso_pm2 en boveda_entradas del mismo proyecto
+            const [srv] = await db().ejecutarQuery(
+                'SELECT id_proyecto FROM synapse_servidores WHERE id_servidor = ?', [id]
+            );
+            if (srv?.id_proyecto) {
+                await db().ejecutarQuery(
+                    'UPDATE boveda_entradas SET proceso_pm2 = ? WHERE id_proyecto = ?',
+                    [safeProcess, srv.id_proyecto]
+                );
+            }
+
             res.json({ ok: true });
         } catch (e) {
             console.error('[ADMIN] updateClientProcess:', e.message);

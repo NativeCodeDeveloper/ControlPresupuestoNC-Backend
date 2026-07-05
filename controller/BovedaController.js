@@ -1,6 +1,8 @@
 import * as Boveda from '../model/BovedaModel.js';
+import DataBase from '../config/Database.js';
 
 const LOG = '[Boveda]';
+const db  = () => DataBase.getInstance();
 
 export default class BovedaController {
 
@@ -56,6 +58,20 @@ export default class BovedaController {
         try {
             await Boveda.updateEntrada(req.params.id, req.body);
             const entrada = await Boveda.getEntrada(req.params.id);
+
+            // Sync → Synapse: si cambió proceso_pm2, actualizar synapse_servidores del mismo proyecto
+            if (req.body.proceso_pm2 !== undefined && entrada?.id_proyecto) {
+                const safeProcess = req.body.proceso_pm2
+                    ? String(req.body.proceso_pm2).replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 100) || null
+                    : null;
+                await db().ejecutarQuery(
+                    `UPDATE synapse_servidores SET pm2_process = ?
+                     WHERE id_proyecto = ? AND activo = 1
+                     ORDER BY id_servidor DESC LIMIT 1`,
+                    [safeProcess, entrada.id_proyecto]
+                );
+            }
+
             res.json({ ok: true, entrada });
         } catch (e) {
             console.error(`${LOG} actualizar`, e.message);
