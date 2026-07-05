@@ -6,6 +6,9 @@ const LOG = '[F29]';
 // Días antes del 20 en que se envía el recordatorio
 const DIAS_AVISO = [5, 1];
 
+// Evita envíos duplicados si el cron corre varias veces en el mismo día
+const _yaEnviado = new Set();
+
 function getNombreMes(mes) {
     return ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'][mes - 1];
 }
@@ -79,6 +82,12 @@ export async function ejecutarRecordatorioF29() {
         return { enviados: 0, errores: 0 };
     }
 
+    const dedupeKey = `${hoy.toISOString().slice(0, 10)}-${mesDeclaracion}-${añoDeclaracion}-${diasRestantes}`;
+    if (_yaEnviado.has(dedupeKey)) {
+        console.log(`${LOG} Aviso ya enviado hoy (${dedupeKey}), omitiendo.`);
+        return { enviados: 0, errores: 0 };
+    }
+
     console.log(`${LOG} ============ F29 REMINDER ============`);
     console.log(`${LOG} Faltan ${diasRestantes} días — enviando aviso a ${senderEmail}`);
 
@@ -106,7 +115,12 @@ export async function ejecutarRecordatorioF29() {
             textContent: `F29 SII — Faltan ${diasRestantes} días. Período: ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence: ${vencimientoStr}. Total estimado: ${totalF29 ?? 'Ver sistema'}.`,
             logPrefix: LOG
         });
-        if (ok) enviados++; else errores++;
+        if (ok) {
+            enviados++;
+            _yaEnviado.add(dedupeKey);
+        } else {
+            errores++;
+        }
     } catch (err) {
         console.error(`${LOG} Error enviando email:`, err?.message);
         errores++;
