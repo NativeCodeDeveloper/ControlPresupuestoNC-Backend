@@ -125,8 +125,14 @@ export async function updateTicket(id, campos) {
                         'resolucion_observaciones','cerrado_en','email_apertura_message_id'];
     const sets = [], params = [];
 
+    const nullable = new Set(['id_responsable','resolucion_causa','resolucion_accion',
+                             'resolucion_resultado','resolucion_observaciones','cerrado_en',
+                             'email_apertura_message_id']);
     for (const [k, v] of Object.entries(campos)) {
-        if (permitidos.includes(k) && v !== undefined) { sets.push(`${k} = ?`); params.push(v); }
+        if (permitidos.includes(k) && v !== undefined && (nullable.has(k) || v !== null)) {
+            sets.push(`${k} = ?`);
+            params.push(v);
+        }
     }
     if (!sets.length) return;
 
