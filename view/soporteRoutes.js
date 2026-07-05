@@ -1,5 +1,6 @@
 import { Router } from 'express';
 import SoporteController from '../controller/SoporteController.js';
+import ActualizacionesController from '../controller/ActualizacionesController.js';
 
 const router = Router();
 
@@ -22,5 +23,9 @@ router.post('/:id/actividad/comentario',  SoporteController.agregarComentario);
 // Email
 router.get('/:id/email/preview',   SoporteController.previewEmail);
 router.post('/:id/email/enviar',   SoporteController.enviarEmail);
+
+// Actualizaciones del sistema (broadcast)
+router.get('/actualizaciones',        ActualizacionesController.listar);
+router.post('/actualizaciones/enviar', ActualizacionesController.enviar);
 
 export default router;
