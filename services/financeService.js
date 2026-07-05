@@ -1559,10 +1559,7 @@ export async function getFlujoCajaAnual(query = {}) {
 
 export async function calcularF29(query = {}) {
     const conexion = DataBase.getInstance();
-    const { mes, año } = getPeriodFromQuery(query);
-    const startDate = `${año}-${String(mes).padStart(2, '0')}-01`;
-    const lastDay = new Date(año, mes, 0).getDate();
-    const endDate = `${año}-${String(mes).padStart(2, '0')}-${lastDay}`;
+    const { month: mes, year: año, startDate, endDate } = getPeriodFromQuery(query);
 
     const IVA = 0.19;
 
