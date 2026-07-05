@@ -10,6 +10,7 @@ import { requireAuth } from "./middleware/requireAuth.js";
 
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO
 import sociosRoutes from "./view/sociosRoutes.js";
+import clientesRoutes from "./view/clientesRoutes.js";
 import synapseRoutes from "./view/synapseRoutes.js";
 import soporteRoutes from "./view/soporteRoutes.js";
 import workspaceRoutes from "./view/workspaceRoutes.js";
@@ -150,7 +151,8 @@ app.get("/", (req, res) => { res.send("Backend Control Presupuestario - Running 
 // ========================================
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO (protegidas con Clerk JWT)
 // ========================================
-app.use("/api/socios", requireAuth, sociosRoutes);
+app.use("/api/socios",    requireAuth, sociosRoutes);
+app.use("/api/clientes", requireAuth, clientesRoutes);
 app.use("/api/proyectos", requireAuth, proyectosRoutes);
 app.use("/api/costos-fijos", requireAuth, costosFixosRoutes);
 app.use("/api/costos-variables", requireAuth, costosVariablesRoutes);
