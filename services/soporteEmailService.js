@@ -10,9 +10,13 @@ function getSlaLabel(horas) {
 }
 
 function formatFecha(date) {
-    return new Date(date).toLocaleString('es-CL', {
+    const d = typeof date === 'string' && !date.includes('T')
+        ? new Date(date.replace(' ', 'T') + 'Z')
+        : new Date(date);
+    return d.toLocaleString('es-CL', {
         day: '2-digit', month: 'long', year: 'numeric',
-        hour: '2-digit', minute: '2-digit'
+        hour: '2-digit', minute: '2-digit',
+        timeZone: 'America/Santiago'
     });
 }
 
