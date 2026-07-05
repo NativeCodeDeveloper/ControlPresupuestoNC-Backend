@@ -9,7 +9,12 @@ router.get('/estados',          SoporteController.listarEstados);
 router.post('/estados',         SoporteController.crearEstado);
 router.delete('/estados/:id',   SoporteController.eliminarEstado);
 
-// Actualizaciones (rutas estáticas ANTES de /:id para evitar shadowing)
+// Actualizaciones — estados (antes de /actualizaciones para evitar shadowing)
+router.get('/actualizaciones/estados',        ActualizacionesController.listarEstados);
+router.post('/actualizaciones/estados',       ActualizacionesController.crearEstado);
+router.delete('/actualizaciones/estados/:id', ActualizacionesController.eliminarEstado);
+
+// Actualizaciones
 router.get('/actualizaciones',         ActualizacionesController.listar);
 router.post('/actualizaciones/enviar', ActualizacionesController.enviar);
 

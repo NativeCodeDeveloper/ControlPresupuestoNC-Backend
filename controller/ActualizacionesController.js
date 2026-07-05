@@ -40,9 +40,44 @@ function buildHtml(titulo, mensaje, nombreCliente) {
 
 export default class ActualizacionesController {
 
+    // ─── Estados ──────────────────────────────────────────────────────────────
+
+    static async listarEstados(_req, res) {
+        try {
+            const estados = await Actualizaciones.getEstados();
+            res.json(estados ?? []);
+        } catch (e) {
+            res.status(500).json({ message: 'Error al obtener estados' });
+        }
+    }
+
+    static async crearEstado(req, res) {
+        try {
+            const { nombre, color_hex } = req.body;
+            if (!nombre?.trim()) return res.status(400).json({ message: 'Nombre requerido' });
+            await Actualizaciones.createEstado({ nombre: nombre.trim(), color_hex: color_hex ?? '#6b7280' });
+            const estados = await Actualizaciones.getEstados();
+            res.status(201).json({ ok: true, estados });
+        } catch (e) {
+            res.status(500).json({ message: 'Error al crear estado' });
+        }
+    }
+
+    static async eliminarEstado(req, res) {
+        try {
+            await Actualizaciones.deleteEstado(req.params.id);
+            const estados = await Actualizaciones.getEstados();
+            res.json({ ok: true, estados });
+        } catch (e) {
+            res.status(500).json({ message: 'Error al eliminar estado' });
+        }
+    }
+
+    // ─── Actualizaciones ──────────────────────────────────────────────────────
+
     static async listar(req, res) {
         try {
-            const data = await Actualizaciones.getActualizaciones();
+            const data = await Actualizaciones.getActualizaciones(req.query);
             res.json(data ?? []);
         } catch (e) {
             res.status(500).json({ message: 'Error al obtener historial' });
@@ -51,7 +86,7 @@ export default class ActualizacionesController {
 
     static async enviar(req, res) {
         try {
-            const { titulo, mensaje, destinatarios } = req.body;
+            const { titulo, mensaje, destinatarios, id_estado, prioridad, modo } = req.body;
             if (!titulo?.trim())   return res.status(400).json({ message: 'Título requerido' });
             if (!mensaje?.trim())  return res.status(400).json({ message: 'Mensaje requerido' });
             if (!Array.isArray(destinatarios) || !destinatarios.length)
@@ -74,11 +109,13 @@ export default class ActualizacionesController {
             }
 
             await Actualizaciones.createActualizacion({
-                titulo, mensaje,
-                destinatarios,
+                titulo, mensaje, destinatarios,
                 total_enviados: enviados,
                 total_errores:  errores,
-                id_socio: req.body.id_socio ?? null,
+                id_socio:  req.body.id_socio ?? null,
+                id_estado: id_estado ? Number(id_estado) : null,
+                prioridad: prioridad ?? 'media',
+                modo:      modo ?? 'masivo',
             });
 
             res.json({ ok: true, enviados, errores });
