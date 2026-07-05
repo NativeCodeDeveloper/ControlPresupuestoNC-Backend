@@ -1411,7 +1411,35 @@ export async function getUpcomingDueItems(query = {}) {
         variableItems = [];
     }
 
-    const allItems = [...fixedItems, ...variableItems]
+    // F29: alerta mensual el día 20 del mes siguiente al período declarado
+    const f29Items = [];
+    try {
+        const now = new Date();
+        const candidates = [
+            new Date(now.getFullYear(), now.getMonth(), 20),       // día 20 mes actual
+            new Date(now.getFullYear(), now.getMonth() + 1, 20),   // día 20 mes siguiente
+        ];
+        for (const f29Due of candidates) {
+            if (f29Due >= today && f29Due <= limitDate) {
+                const mesDec = f29Due.getMonth() === 0 ? 11 : f29Due.getMonth() - 1;
+                const añoDec = f29Due.getMonth() === 0 ? f29Due.getFullYear() - 1 : f29Due.getFullYear();
+                const mesesNombres = ['Enero','Febrero','Marzo','Abril','Mayo','Junio','Julio','Agosto','Septiembre','Octubre','Noviembre','Diciembre'];
+                f29Items.push({
+                    id: `f29-${f29Due.getFullYear()}-${f29Due.getMonth() + 1}`,
+                    tipo: 'f29',
+                    referencia_id: null,
+                    titulo: 'Formulario 29 — SII',
+                    concepto: `Declaración IVA + PPM de ${mesesNombres[mesDec]} ${añoDec}`,
+                    frecuencia: 'Mensual',
+                    fecha_vencimiento: toSqlDate(f29Due),
+                    dias_restantes: diffDays(today, f29Due),
+                    monto: null
+                });
+            }
+        }
+    } catch (_) {}
+
+    const allItems = [...fixedItems, ...variableItems, ...f29Items]
         .filter((item) => {
             const due = normalizeDate(item.fecha_vencimiento);
             return due && due <= limitDate;

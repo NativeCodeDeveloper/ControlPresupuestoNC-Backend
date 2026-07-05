@@ -48,6 +48,7 @@ import especificacionProductoRoutes from "./view/especificacionProductoRoutes.js
 import notificacionAgendamientoRoutes from "./view/notificacionAgendamientoRoutes.js";
 import { ejecutarRecordatoriosAutomaticos } from "./services/notificacionPreviaDia.js";
 import { ejecutarRecordatoriosCobro } from "./services/billingReminderService.js";
+import { ejecutarRecordatorioF29 } from "./services/f29ReminderService.js";
 import { ejecutarRecordatoriosCliente } from "./services/clientReminderService.js";
 import calendarioRoutes from "./view/calendarioRoutes.js";
 import { ejecutarRecordatoriosCalendario } from "./services/calendarioReminderService.js";
@@ -266,6 +267,9 @@ httpServer.listen(PORT, () => {
     const billingHandle = setInterval(() => {
         ejecutarRecordatoriosCobro().catch((err) => {
             console.error('[BILLING] Error inesperado en cron:', err?.message || err);
+        });
+        ejecutarRecordatorioF29().catch((err) => {
+            console.error('[F29] Error inesperado en cron:', err?.message || err);
         });
     }, 6 * 60 * 60 * 1000);
 
