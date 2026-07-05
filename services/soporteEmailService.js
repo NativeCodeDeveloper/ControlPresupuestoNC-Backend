@@ -1,0 +1,174 @@
+import { sendBrevoEmail } from './emailUtils.js';
+
+const LOG = '[NEXUS]';
+
+const PRIORIDAD_LABEL = { baja: 'Baja', media: 'Media', alta: 'Alta', critica: 'Crítica' };
+const SLA_LABEL = { 4: '4 horas hábiles', 8: '8 horas hábiles', 24: '24 horas hábiles', 48: '48 horas hábiles' };
+
+function getSlaLabel(horas) {
+    return SLA_LABEL[horas] ?? `${horas} horas hábiles`;
+}
+
+function formatFecha(date) {
+    return new Date(date).toLocaleString('es-CL', {
+        day: '2-digit', month: 'long', year: 'numeric',
+        hour: '2-digit', minute: '2-digit'
+    });
+}
+
+// ─── Templates predefinidos (texto editable desde el frontend) ────────────────
+
+export function templateApertura({ ticket }) {
+    return {
+        subject: `Ticket N° ${ticket.numero_ticket} recibido — ${ticket.asunto}`,
+        body: `Estimado(a),
+
+Hemos recibido correctamente su solicitud de soporte.
+
+Ticket N° ${ticket.numero_ticket}
+Asunto: ${ticket.asunto}
+Prioridad: ${PRIORIDAD_LABEL[ticket.prioridad] ?? ticket.prioridad}
+Tiempo estimado de respuesta: ${getSlaLabel(ticket.sla_horas)}
+Fecha de creación: ${formatFecha(ticket.creado_en)}
+
+Nuestro equipo se encuentra revisando su caso y nos comunicaremos con usted una vez exista una actualización.
+
+Atentamente,
+Equipo de Soporte NativeCode`
+    };
+}
+
+export function templateActualizacion({ ticket, nuevoEstado, mensaje }) {
+    return {
+        subject: `Actualización Ticket N° ${ticket.numero_ticket} — ${ticket.asunto}`,
+        body: mensaje || `Estimado(a),
+
+Le informamos que su ticket de soporte ha sido actualizado.
+
+Ticket N° ${ticket.numero_ticket}
+Estado actual: ${nuevoEstado}
+
+Continuamos trabajando en su caso. Le notificaremos ante cualquier novedad.
+
+Atentamente,
+Equipo de Soporte NativeCode`
+    };
+}
+
+export function templateCierre({ ticket, resolucion }) {
+    const detalle = [
+        resolucion?.causa    ? `Causa: ${resolucion.causa}`           : null,
+        resolucion?.accion   ? `Acción realizada: ${resolucion.accion}` : null,
+        resolucion?.resultado ? `Resultado: ${resolucion.resultado}`  : null,
+        resolucion?.observaciones ? `Observaciones: ${resolucion.observaciones}` : null,
+    ].filter(Boolean).join('\n');
+
+    return {
+        subject: `Re: Ticket N° ${ticket.numero_ticket} recibido — ${ticket.asunto}`,
+        body: `Estimado(a),
+
+Le informamos que su caso de soporte ha sido resuelto y cerrado.
+
+Ticket N° ${ticket.numero_ticket}
+
+${detalle ? `Resolución:\n${detalle}` : 'El caso ha sido resuelto satisfactoriamente.'}
+
+Si requiere asistencia adicional, puede responder directamente a este correo y con gusto revisaremos nuevamente su caso.
+
+Atentamente,
+Equipo de Soporte NativeCode`
+    };
+}
+
+// ─── HTML wrapper compartido ──────────────────────────────────────────────────
+
+function buildHtml({ numero_ticket, asunto, bodyText, accentColor = '#7c3aed' }) {
+    const lines = bodyText.split('\n').map(l => l.trim() === '' ? '<br/>' : `<p style="margin:0 0 8px">${l}</p>`).join('');
+    return `
+    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:540px;margin:0 auto;background:#0f0f0f;border-radius:12px;overflow:hidden;">
+        <div style="background:${accentColor};padding:20px 24px;">
+            <p style="margin:0;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;">NativeCode — Soporte Técnico</p>
+            <h1 style="margin:6px 0 0;color:#fff;font-size:18px;font-weight:700;">${asunto}</h1>
+            <p style="margin:4px 0 0;color:#fff;font-size:12px;opacity:0.6;">Ticket N° ${numero_ticket}</p>
+        </div>
+        <div style="padding:24px;color:#ccc;font-size:13px;line-height:1.6;">
+            ${lines}
+        </div>
+        <div style="padding:12px 24px;border-top:1px solid #1f1f1f;">
+            <p style="margin:0;color:#555;font-size:11px;">NativeCode · Soporte Técnico</p>
+        </div>
+    </div>`;
+}
+
+// ─── Funciones de envío ───────────────────────────────────────────────────────
+
+export async function enviarApertura({ ticket, bodyText }) {
+    const senderEmail = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
+    if (!senderEmail) { console.warn(`${LOG} Sin email remitente configurado.`); return { ok: false }; }
+
+    const template = templateApertura({ ticket });
+    const texto = bodyText ?? template.body;
+
+    const accentColor = ticket.prioridad === 'critica' ? '#ef4444' : ticket.prioridad === 'alta' ? '#f59e0b' : '#7c3aed';
+
+    const ok = await sendBrevoEmail({
+        senderName: 'NativeCode Soporte',
+        senderEmail,
+        to: ticket.email_cliente,
+        subject: template.subject,
+        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto, accentColor }),
+        textContent: texto,
+        logPrefix: LOG
+    });
+
+    console.log(`${LOG} Apertura ticket ${ticket.numero_ticket} → ${ticket.email_cliente}: ${ok ? 'OK' : 'ERROR'}`);
+    return { ok };
+}
+
+export async function enviarActualizacion({ ticket, nuevoEstado, bodyText }) {
+    const senderEmail = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
+    if (!senderEmail) { console.warn(`${LOG} Sin email remitente configurado.`); return { ok: false }; }
+
+    const template = templateActualizacion({ ticket, nuevoEstado, mensaje: bodyText });
+    const texto = bodyText ?? template.body;
+
+    const ok = await sendBrevoEmail({
+        senderName: 'NativeCode Soporte',
+        senderEmail,
+        to: ticket.email_cliente,
+        subject: template.subject,
+        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto }),
+        textContent: texto,
+        logPrefix: LOG
+    });
+
+    console.log(`${LOG} Actualización ticket ${ticket.numero_ticket}: ${ok ? 'OK' : 'ERROR'}`);
+    return { ok };
+}
+
+export async function enviarCierre({ ticket, resolucion, bodyText }) {
+    const senderEmail = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
+    if (!senderEmail) { console.warn(`${LOG} Sin email remitente configurado.`); return { ok: false }; }
+
+    const template = templateCierre({ ticket, resolucion });
+    const texto = bodyText ?? template.body;
+
+    const headers = {};
+    if (ticket.email_apertura_message_id) {
+        headers['In-Reply-To'] = ticket.email_apertura_message_id;
+        headers['References']  = ticket.email_apertura_message_id;
+    }
+
+    const ok = await sendBrevoEmail({
+        senderName: 'NativeCode Soporte',
+        senderEmail,
+        to: ticket.email_cliente,
+        subject: template.subject,
+        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto, accentColor: '#6b7280' }),
+        textContent: texto,
+        logPrefix: LOG
+    });
+
+    console.log(`${LOG} Cierre ticket ${ticket.numero_ticket}: ${ok ? 'OK' : 'ERROR'}`);
+    return { ok };
+}

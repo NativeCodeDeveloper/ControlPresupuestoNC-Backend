@@ -11,6 +11,7 @@ import { requireAuth } from "./middleware/requireAuth.js";
 // RUTAS NUEVAS - CONTROL PRESUPUESTARIO
 import sociosRoutes from "./view/sociosRoutes.js";
 import synapseRoutes from "./view/synapseRoutes.js";
+import soporteRoutes from "./view/soporteRoutes.js";
 import workspaceRoutes from "./view/workspaceRoutes.js";
 import adjuntosRoutes from "./view/adjuntosRoutes.js";
 import adminRoutes from "./view/adminRoutes.js";
@@ -159,7 +160,8 @@ app.use("/api/catalogos", requireAuth, catalogosRoutes);
 app.use("/api/socios", requireAuth, retirosSociosRoutes);
 app.use("/api/finanzas", requireAuth, finanzasRoutes);
 app.use("/api/inversiones", requireAuth, inversionesRoutes);
-app.use("/api/synapse", requireAuth, synapseRoutes);
+app.use("/api/synapse",  requireAuth, synapseRoutes);
+app.use("/api/soporte", requireAuth, soporteRoutes);
 app.use("/api/workspace", requireAuth, workspaceRoutes);
 app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
 app.use("/api/admin",      requireAuth, adminRoutes);
