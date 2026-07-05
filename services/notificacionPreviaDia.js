@@ -315,6 +315,8 @@ function formatearFecha(fechaStr) {
  * - 6 horas antes (entre 5.5 y 6.5 horas = 330-390 minutos)
  */
 export async function ejecutarRecordatoriosAutomaticos() {
+  if (recordatoriosDeshabilitadosPorEsquema) return;
+
   console.log("[RECORDATORIO] ========================================");
   console.log("[RECORDATORIO] Iniciando proceso de recordatorios...");
   console.log("[RECORDATORIO] Fecha/Hora actual:", new Date().toLocaleString('es-CL'));
