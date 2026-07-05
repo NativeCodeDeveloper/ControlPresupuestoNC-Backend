@@ -105,9 +105,16 @@ export default class SoporteController {
             }
 
             if (resolucion_causa || resolucion_accion || resolucion_resultado || resolucion_observaciones) {
+                const detalle = [
+                    resolucion_causa     && `Causa: ${resolucion_causa}`,
+                    resolucion_accion    && `Acción: ${resolucion_accion}`,
+                    resolucion_resultado && `Resultado: ${resolucion_resultado}`,
+                    resolucion_observaciones && `Obs: ${resolucion_observaciones}`,
+                ].filter(Boolean).join('\n');
+
                 await Soporte.addActividad({
                     id_ticket: id, tipo: 'resolucion',
-                    contenido: 'Resolución registrada',
+                    contenido: detalle || 'Resolución registrada',
                     id_socio: req.body.id_socio ?? null
                 });
             }
