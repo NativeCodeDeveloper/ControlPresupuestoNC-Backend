@@ -1,6 +1,10 @@
 import * as Soporte from '../model/SoporteTickets.js';
 import { enviarApertura, enviarActualizacion, enviarCierre,
          templateApertura, templateActualizacion, templateCierre } from '../services/soporteEmailService.js';
+import { emitUpdate } from '../config/socket.js';
+import DataBase from '../config/Database.js';
+
+const db = () => DataBase.getInstance();
 
 export default class SoporteController {
 
@@ -67,6 +71,13 @@ export default class SoporteController {
                 }
             }
 
+            // Notificación interna — nuevo ticket
+            await db().ejecutarQuery(
+                `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, NOW(), 'ticket_nuevo')`,
+                [`Nuevo ticket: ${numero_ticket}`, `${nombre_cliente} — ${asunto}`]
+            );
+            emitUpdate('ncf:update');
+
             res.status(201).json({ ok: true, id_ticket, numero_ticket, ticket });
         } catch (e) {
             console.error('[SoporteController.crear]', e.message);
@@ -97,6 +108,13 @@ export default class SoporteController {
                     estado_anterior: estadoAnterior, estado_nuevo: estadoNuevo,
                     id_socio: req.body.id_socio ?? null
                 });
+
+                // Notificación interna — cambio de estado
+                await db().ejecutarQuery(
+                    `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, NOW(), 'ticket_estado')`,
+                    [`${ticket.numero_ticket} → ${estadoNuevo}`, `${ticket.asunto} · ${ticket.nombre_cliente}`]
+                );
+                emitUpdate('ncf:update');
 
                 // Si es estado de cierre, marcar cerrado_en
                 if (nuevoEst?.es_cierre) {
