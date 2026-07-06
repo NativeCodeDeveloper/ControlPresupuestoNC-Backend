@@ -69,6 +69,11 @@ export default class AdjuntosController {
             res.setHeader('Content-Disposition',
                 `attachment; filename="${encodeURIComponent(adj.nombre_original)}"`);
 
+            Body.on('error', (err) => {
+                console.error('[ADJUNTOS] pipe error:', err.message);
+                if (!res.headersSent) res.status(500).json({ error: 'Error al descargar archivo' });
+                else res.destroy();
+            });
             Body.pipe(res);
         } catch (e) {
             console.error('[ADJUNTOS] download:', e.message);

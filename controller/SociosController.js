@@ -83,7 +83,7 @@ export default class SociosController {
             const socio = new Socios();
             const resultado = await socio.insertSocio(nombre, porcentaje_participacion, email, telefono);
             emitUpdate('ncf:update');
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[SociosController.crearSocio]", error);
             return res.status(500).json({ message: "Error al crear socio" });

@@ -10,6 +10,4 @@ router.post("/seleccionarPorid", PedidoComprasController.buscarPedidosPorID);
 router.post("/seleccionarDetalle", PedidoComprasController.seleccionarDetallePedido);
 router.post("/cambioEstado", PedidoComprasController.cambioEstadoDinamico);
 
-
-
 export default router;

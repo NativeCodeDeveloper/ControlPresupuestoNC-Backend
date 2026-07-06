@@ -170,7 +170,7 @@ export default class CostosVariablesController {
                 con_factura !== undefined ? con_factura : 1
             );
             emitUpdate('ncf:update');
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[CostosVariablesController.crearCostoVariable]", error);
             return res.status(500).json({ message: "Error al crear costo variable" });

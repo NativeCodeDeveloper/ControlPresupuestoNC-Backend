@@ -129,7 +129,7 @@ export default class CostosFixosController {
             const costo = new CostosFijos();
             const resultado = await costo.insertCostoFijo(servicioIdFinal, proveedor, monto, frecuencia, fecha_pago, fechaInicioFinal, notas);
             emitUpdate('ncf:update');
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[CostosFixosController.crearCostoFijo]", error);
             return res.status(500).json({ message: "Error al crear costo fijo" });

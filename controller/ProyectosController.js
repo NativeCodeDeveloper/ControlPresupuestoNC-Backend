@@ -177,7 +177,7 @@ export default class ProyectosController {
                 afecto_iva !== undefined ? afecto_iva : 1
             );
             emitUpdate('ncf:update');
-            return res.json({ ok: true, resultado, codigo_interno: codigoFinal });
+            return res.status(201).json({ ok: true, id_proyecto: resultado.insertId, codigo_interno: codigoFinal });
         } catch (error) {
             console.error("[ProyectosController.crearProyecto]", error);
             return res.status(500).json({ message: "Error al crear proyecto" });

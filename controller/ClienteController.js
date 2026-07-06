@@ -4,20 +4,20 @@ export default class ClienteController {
 
     static async listar(req, res) {
         try {
-            res.json(await Cliente.getClientes() ?? []);
+            return res.json(await Cliente.getClientes() ?? []);
         } catch (e) {
             console.error('[Cliente.listar]', e.message);
-            res.status(500).json({ message: 'Error al obtener clientes' });
+            return res.status(500).json({ message: 'Error al obtener clientes' });
         }
     }
 
     static async proyectos(req, res) {
         try {
             const nombre = decodeURIComponent(req.params.nombre);
-            res.json(await Cliente.getClienteProyectos(nombre) ?? []);
+            return res.json(await Cliente.getClienteProyectos(nombre) ?? []);
         } catch (e) {
             console.error('[Cliente.proyectos]', e.message);
-            res.status(500).json({ message: 'Error al obtener proyectos del cliente' });
+            return res.status(500).json({ message: 'Error al obtener proyectos del cliente' });
         }
     }
 }

@@ -159,8 +159,9 @@ export default class RetirosSociosController {
                 return { resultado: res, disponibleData: data };
             });
 
-            return res.json({
+            return res.status(201).json({
                 ok: true,
+                id: resultado.insertId,
                 resultado,
                 disponible_actualizado: Math.max(0, Number(disponibleData.disponible || 0) - montoFinal)
             });

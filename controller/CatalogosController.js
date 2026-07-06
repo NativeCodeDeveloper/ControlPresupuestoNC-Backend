@@ -48,7 +48,7 @@ export default class CatalogosController {
 
             const catalogos = new Catalogos();
             const resultado = await catalogos.insertTipoProyecto(nombreFinal, descripcion, precioFinal ? Number(precioFinal) : null);
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[CatalogosController.crearTipoProyecto]", error);
             return res.status(500).json({ message: "Error al crear tipo de proyecto" });
@@ -134,7 +134,7 @@ export default class CatalogosController {
 
             const catalogos = new Catalogos();
             const resultado = await catalogos.insertEstadoProyecto(nombreFinal, descripcion, color_hex);
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[CatalogosController.crearEstadoProyecto]", error);
             return res.status(500).json({ message: "Error al crear estado de proyecto" });
@@ -198,7 +198,7 @@ export default class CatalogosController {
 
             const catalogos = new Catalogos();
             const resultado = await catalogos.insertTipoCostoVariable(nombreFinal, descripcion);
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[CatalogosController.crearTipoCostoVariable]", error);
             return res.status(500).json({ message: "Error al crear tipo de costo variable" });

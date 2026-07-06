@@ -72,7 +72,7 @@ export default class ServiciosController {
 
             const servicio = new Servicios();
             const resultado = await servicio.insertServicio(nombreFinal, descripcion);
-            return res.json({ ok: true, resultado });
+            return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[ServiciosController.crearServicio]", error);
             return res.status(500).json({ message: "Error al crear servicio" });

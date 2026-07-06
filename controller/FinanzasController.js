@@ -76,6 +76,14 @@ export default class FinanzasController {
      */
     static async obtenerF29(req, res) {
         try {
+            const mes = req.query.mes !== undefined ? Number(req.query.mes) : undefined;
+            const año = req.query.año !== undefined ? Number(req.query.año) : undefined;
+            if (mes !== undefined && (Number.isNaN(mes) || mes < 1 || mes > 12)) {
+                return res.status(400).json({ message: 'Parámetro mes inválido (1-12)' });
+            }
+            if (año !== undefined && (Number.isNaN(año) || año < 2000 || año > 2100)) {
+                return res.status(400).json({ message: 'Parámetro año inválido' });
+            }
             const data = await calcularF29(req.query || {});
             return res.json(data);
         } catch (error) {

@@ -131,8 +131,9 @@ export default class InversionesController {
                 return { resultado: res, created: createdRec, disponibleFondo: saldo };
             });
 
-            return res.json({
+            return res.status(201).json({
                 ok: true,
+                id: resultado.insertId,
                 resultado,
                 data: created,
                 fondo_origen: fondoFinal,

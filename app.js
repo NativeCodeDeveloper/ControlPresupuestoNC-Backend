@@ -174,27 +174,27 @@ app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVar
 app.delete("/api/tipos-costos/:id", requireAuth, CatalogosController.eliminarTipoCostoVariable);
 
 // ========================================
-// RUTAS ANTIGUAS - innovaDent (mantener por ahora)
+// RUTAS ANTIGUAS - innovaDent (protegidas con Clerk JWT)
 // ========================================
-app.use("/pedidos", pedidosRoutes);
-app.use("/especificacionProducto", especificacionProductoRoutes);
-app.use("/subsubcategorias", subSubCategoriaRoutes);
-app.use("/carruselPortada", carruselPortadaRoutes);
-app.use('/pacientes', pacienteRoutes);
-app.use('/ficha', fichaRoutes);
-app.use("/reservaPacientes", reservaPacienteRoutes);
-app.use("/cloudflare", cloudflareRoutes);
-app.use("/correo", correosRoutes);
-app.use("/cupon", cuponesRoutes);
-app.use("/pagosMercadoPago", mercadoPagoRouter);
-app.use("/producto", productoRoute);
-app.use("/titulo", tituloRoutes);
-app.use("/textos", textosRoutes);
-app.use("/categorias", categoriaRoutes);
-app.use("/subcategorias", subCategoriasRoutes);
-app.use("/publicaciones", publicacionesRoutes);
-app.use('/contacto', contactoRouter );
-app.use('/notificacion', notificacionAgendamientoRoutes);
+app.use("/pedidos",               requireAuth, pedidosRoutes);
+app.use("/especificacionProducto",requireAuth, especificacionProductoRoutes);
+app.use("/subsubcategorias",      requireAuth, subSubCategoriaRoutes);
+app.use("/carruselPortada",       requireAuth, carruselPortadaRoutes);
+app.use('/pacientes',             requireAuth, pacienteRoutes);
+app.use('/ficha',                 requireAuth, fichaRoutes);
+app.use("/reservaPacientes",      requireAuth, reservaPacienteRoutes);
+app.use("/cloudflare",            requireAuth, cloudflareRoutes);
+app.use("/correo",                requireAuth, correosRoutes);
+app.use("/cupon",                 requireAuth, cuponesRoutes);
+app.use("/pagosMercadoPago",      requireAuth, mercadoPagoRouter);
+app.use("/producto",              requireAuth, productoRoute);
+app.use("/titulo",                requireAuth, tituloRoutes);
+app.use("/textos",                requireAuth, textosRoutes);
+app.use("/categorias",            requireAuth, categoriaRoutes);
+app.use("/subcategorias",         requireAuth, subCategoriasRoutes);
+app.use("/publicaciones",         requireAuth, publicacionesRoutes);
+app.use('/contacto',              requireAuth, contactoRouter);
+app.use('/notificacion',          requireAuth, notificacionAgendamientoRoutes);
 
 // Ruta para ejecutar recordatorios manualmente (útil para testing)
 app.get('/recordatorios/ejecutar', async (req, res) => {
