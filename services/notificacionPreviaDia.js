@@ -289,7 +289,7 @@ async function obtenerReservasParaRecordatorio() {
 
     if (noTable) {
       recordatoriosDeshabilitadosPorEsquema = true;
-      console.warn("[RECORDATORIO] Tabla de reservas no existe en este esquema. Recordatorios automáticos deshabilitados.");
+      console.log("[RECORDATORIO] Tabla de reservas no existe en este esquema. Recordatorios deshabilitados.");
       return [];
     }
 
@@ -317,19 +317,14 @@ function formatearFecha(fechaStr) {
 export async function ejecutarRecordatoriosAutomaticos() {
   if (recordatoriosDeshabilitadosPorEsquema) return;
 
-  console.log("[RECORDATORIO] ========================================");
-  console.log("[RECORDATORIO] Iniciando proceso de recordatorios...");
-  console.log("[RECORDATORIO] Fecha/Hora actual:", new Date().toLocaleString('es-CL'));
-
   try {
     const reservas = await obtenerReservasParaRecordatorio();
 
-    if (reservas.length === 0) {
-      console.log("[RECORDATORIO] No hay reservas próximas para recordar.");
-      console.log("[RECORDATORIO] ========================================");
-      return { enviados: 0, errores: 0 };
-    }
+    if (reservas.length === 0) return { enviados: 0, errores: 0 };
 
+    console.log("[RECORDATORIO] ========================================");
+    console.log("[RECORDATORIO] Iniciando proceso de recordatorios...");
+    console.log("[RECORDATORIO] Fecha/Hora actual:", new Date().toLocaleString('es-CL'));
     console.log(`[RECORDATORIO] Encontradas ${reservas.length} reserva(s) próxima(s)`);
 
     let enviados = 0;
