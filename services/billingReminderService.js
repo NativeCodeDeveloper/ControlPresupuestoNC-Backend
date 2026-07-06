@@ -173,15 +173,8 @@ async function obtenerProyectosParaRecordar(conexion) {
 }
 
 export async function ejecutarRecordatoriosCobro() {
-    console.log(`${LOG} ========================================`);
-    console.log(`${LOG} Iniciando recordatorios de cobro...`);
-    console.log(`${LOG} Fecha:`, new Date().toLocaleString('es-CL'));
-
     const senderEmail = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
-    if (!senderEmail) {
-        console.warn(`${LOG} BILLING_REMINDER_TO no configurado. Saltando.`);
-        return { enviados: 0, errores: 0 };
-    }
+    if (!senderEmail) return { enviados: 0, errores: 0 };
 
     const conexion = DataBase.getInstance();
     let enviados = 0;
@@ -190,12 +183,10 @@ export async function ejecutarRecordatoriosCobro() {
     try {
         const proyectos = await obtenerProyectosParaRecordar(conexion);
 
-        if (!Array.isArray(proyectos) || proyectos.length === 0) {
-            console.log(`${LOG} Sin proyectos que requieran recordatorio hoy.`);
-            console.log(`${LOG} ========================================`);
-            return { enviados: 0, errores: 0 };
-        }
+        if (!Array.isArray(proyectos) || proyectos.length === 0) return { enviados: 0, errores: 0 };
 
+        console.log(`${LOG} ========================================`);
+        console.log(`${LOG} Iniciando recordatorios — ${new Date().toLocaleString('es-CL')}`);
         console.log(`${LOG} ${proyectos.length} proyecto(s) a procesar`);
 
         for (const proyecto of proyectos) {
@@ -245,7 +236,7 @@ export async function ejecutarRecordatoriosCobro() {
         errores++;
     }
 
-    console.log(`${LOG} Finalizado. Enviados: ${enviados}, Errores: ${errores}`);
+    if (enviados > 0 || errores > 0) console.log(`${LOG} Finalizado. Enviados: ${enviados}, Errores: ${errores}`);
     console.log(`${LOG} ========================================`);
     return { enviados, errores };
 }
