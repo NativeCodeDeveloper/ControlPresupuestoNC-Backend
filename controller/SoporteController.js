@@ -2,6 +2,7 @@ import * as Soporte from '../model/SoporteTickets.js';
 import { enviarApertura, enviarActualizacion, enviarCierre,
          templateApertura, templateActualizacion, templateCierre } from '../services/soporteEmailService.js';
 import { emitUpdate } from '../config/socket.js';
+import { sendPushToAll } from '../services/pushService.js';
 import DataBase from '../config/Database.js';
 
 const db = () => DataBase.getInstance();
@@ -77,6 +78,7 @@ export default class SoporteController {
                 [`Nuevo ticket: ${numero_ticket}`, `${nombre_cliente} — ${asunto}`]
             );
             emitUpdate('ncf:update');
+            sendPushToAll(`Nuevo ticket: ${numero_ticket}`, `${nombre_cliente} — ${asunto}`, '/nexus').catch(() => {});
 
             res.status(201).json({ ok: true, id_ticket, numero_ticket, ticket });
         } catch (e) {
@@ -115,6 +117,7 @@ export default class SoporteController {
                     [`${ticket.numero_ticket} → ${estadoNuevo}`, `${ticket.asunto} · ${ticket.nombre_cliente}`]
                 );
                 emitUpdate('ncf:update');
+                sendPushToAll(`${ticket.numero_ticket} → ${estadoNuevo}`, `${ticket.asunto} · ${ticket.nombre_cliente}`, '/nexus').catch(() => {});
 
                 // Si es estado de cierre, marcar cerrado_en
                 if (nuevoEst?.es_cierre) {

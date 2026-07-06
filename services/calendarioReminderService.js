@@ -1,17 +1,9 @@
-import webpush from 'web-push';
 import { getRecordatoriosPendientes, marcarRecordatorioEnviado } from '../model/CalendarioModel.js';
 import { sendBrevoEmail } from './emailUtils.js';
+import { sendPushToAll } from './pushService.js';
 import DataBase from '../config/Database.js';
 
 const db = () => DataBase.getInstance();
-
-if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
-    webpush.setVapidDetails(
-        'mailto:desarrollo.native.code@gmail.com',
-        process.env.VAPID_PUBLIC_KEY,
-        process.env.VAPID_PRIVATE_KEY
-    );
-}
 
 function formatFecha(fecha) {
     return new Date(fecha).toLocaleString('es-CL', {
@@ -50,28 +42,6 @@ function buildReminderHtml({ titulo, descripcion, fecha_inicio, minutos_antes })
 </td></tr></table></body></html>`;
 }
 
-async function getPushSubscriptions() {
-    try {
-        return await db().ejecutarQuery(`SELECT * FROM push_subscriptions`, []);
-    } catch { return []; }
-}
-
-async function sendPushNotification(titulo, body) {
-    const subs = await getPushSubscriptions();
-    const payload = JSON.stringify({ titulo, body, icon: '/logonuevoblanco.png', url: '/calendario' });
-    await Promise.allSettled(
-        subs.map(sub =>
-            webpush.sendNotification(
-                { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
-                payload
-            ).catch(async (err) => {
-                if (err.statusCode === 410 || err.statusCode === 404) {
-                    await db().ejecutarQuery(`DELETE FROM push_subscriptions WHERE id = ?`, [sub.id]);
-                }
-            })
-        )
-    );
-}
 
 async function createInappNotification({ id_evento, titulo, descripcion, fecha_inicio }) {
     try {
@@ -108,13 +78,14 @@ export async function ejecutarRecordatoriosCalendario() {
 
                 if (r.tipo === 'inapp') {
                     await createInappNotification(r);
-                    await sendPushNotification(
+                    await sendPushToAll(
                         r.titulo,
                         `Tu evento comienza ${
                             r.minutos_antes === 1440 ? 'mañana' :
                             r.minutos_antes === 360  ? 'en 6 horas' :
                             r.minutos_antes === 60   ? 'en 1 hora' : 'en 30 minutos'
-                        }`
+                        }`,
+                        '/calendario'
                     );
                 }
 
