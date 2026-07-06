@@ -225,6 +225,16 @@ export async function ejecutarRecordatoriosCobro() {
 
             if (ok) {
                 await marcarEnviado(conexion, proyecto.id_proyecto, stage.col, proyecto.fecha_proximo_pago);
+                try {
+                    await conexion.ejecutarQuery(
+                        `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'vencimiento')`,
+                        [
+                            `${stage.titulo} — ${proyecto.nombre_cliente || proyecto.nombre}`,
+                            `${formatearMonto(proyecto.monto_acordado)} · Vence ${formatearFecha(proyecto.fecha_proximo_pago)}`,
+                            proyecto.fecha_proximo_pago
+                        ]
+                    );
+                } catch (_) {}
                 enviados++;
             } else {
                 errores++;

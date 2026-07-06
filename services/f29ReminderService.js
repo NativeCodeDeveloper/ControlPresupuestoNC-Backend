@@ -1,5 +1,6 @@
 import { sendBrevoEmail } from './emailUtils.js';
 import { calcularF29 } from './financeService.js';
+import DataBase from '../config/Database.js';
 
 const LOG = '[F29]';
 
@@ -118,6 +119,19 @@ export async function ejecutarRecordatorioF29() {
         if (ok) {
             enviados++;
             _yaEnviado.add(dedupeKey);
+            try {
+                const tituloNotif = diasRestantes <= 1
+                    ? `F29 SII — vence mañana`
+                    : `F29 SII — ${diasRestantes} días para declarar`;
+                await DataBase.getInstance().ejecutarQuery(
+                    `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'f29')`,
+                    [
+                        tituloNotif,
+                        `Período ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence el ${vencimientoStr}`,
+                        vencimiento.toISOString().slice(0, 10)
+                    ]
+                );
+            } catch (_) {}
         } else {
             errores++;
         }

@@ -76,7 +76,7 @@ async function sendPushNotification(titulo, body) {
 async function createInappNotification({ id_evento, titulo, descripcion, fecha_inicio }) {
     try {
         await db().ejecutarQuery(
-            `INSERT INTO notificaciones_inapp (id_evento, titulo, descripcion, fecha_evento) VALUES (?, ?, ?, ?)`,
+            `INSERT INTO notificaciones_inapp (id_evento, titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, ?, 'calendario')`,
             [id_evento, titulo, descripcion || null, fecha_inicio]
         );
     } catch {}
