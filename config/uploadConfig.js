@@ -9,7 +9,7 @@ const ALLOWED_MIME = new Set([
     'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
     'application/vnd.ms-powerpoint',
     'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-    'text/plain', 'text/csv', 'application/json',
+    'text/plain', 'text/csv', 'text/markdown', 'text/x-markdown', 'application/json',
     'application/zip', 'application/x-zip-compressed',
 ]);
 
