@@ -1,5 +1,6 @@
 import { sendBrevoEmail } from './emailUtils.js';
 import { calcularF29 } from './financeService.js';
+import { sendPushToAll } from './pushService.js';
 import DataBase from '../config/Database.js';
 
 const LOG = '[F29]';
@@ -129,14 +130,12 @@ export async function ejecutarRecordatorioF29() {
                     []
                 );
                 if (!yaNotificado?.length) {
+                    const descF29 = `Período ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence el ${vencimientoStr}`;
                     await db.ejecutarQuery(
                         `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'f29')`,
-                        [
-                            tituloNotif,
-                            `Período ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence el ${vencimientoStr}`,
-                            vencimiento.toISOString().slice(0, 10)
-                        ]
+                        [tituloNotif, descF29, vencimiento.toISOString().slice(0, 10)]
                     );
+                    sendPushToAll(tituloNotif, descF29, '/contabilidad').catch(() => {});
                 }
             } catch (_) {}
         } else {

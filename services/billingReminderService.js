@@ -1,5 +1,6 @@
 import DataBase from '../config/Database.js';
 import { formatearFecha, formatearMonto, sendBrevoEmail } from './emailUtils.js';
+import { sendPushToAll } from './pushService.js';
 
 /**
  * SISTEMA DE RECORDATORIOS DE COBRO - NativeCode Finance
@@ -226,14 +227,13 @@ export async function ejecutarRecordatoriosCobro() {
             if (ok) {
                 await marcarEnviado(conexion, proyecto.id_proyecto, stage.col, proyecto.fecha_proximo_pago);
                 try {
+                    const tituloVenc = `${stage.titulo} — ${proyecto.nombre_cliente || proyecto.nombre}`;
+                    const descVenc   = `${formatearMonto(proyecto.monto_acordado)} · Vence ${formatearFecha(proyecto.fecha_proximo_pago)}`;
                     await conexion.ejecutarQuery(
                         `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'vencimiento')`,
-                        [
-                            `${stage.titulo} — ${proyecto.nombre_cliente || proyecto.nombre}`,
-                            `${formatearMonto(proyecto.monto_acordado)} · Vence ${formatearFecha(proyecto.fecha_proximo_pago)}`,
-                            proyecto.fecha_proximo_pago
-                        ]
+                        [tituloVenc, descVenc, proyecto.fecha_proximo_pago]
                     );
+                    sendPushToAll(tituloVenc, descVenc, '/ingresos').catch(() => {});
                 } catch (_) {}
                 enviados++;
             } else {
