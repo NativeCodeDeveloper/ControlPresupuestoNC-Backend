@@ -123,14 +123,21 @@ export async function ejecutarRecordatorioF29() {
                 const tituloNotif = diasRestantes <= 1
                     ? `F29 SII — vence mañana`
                     : `F29 SII — ${diasRestantes} días para declarar`;
-                await DataBase.getInstance().ejecutarQuery(
-                    `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'f29')`,
-                    [
-                        tituloNotif,
-                        `Período ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence el ${vencimientoStr}`,
-                        vencimiento.toISOString().slice(0, 10)
-                    ]
+                const db = DataBase.getInstance();
+                const yaNotificado = await db.ejecutarQuery(
+                    `SELECT id FROM notificaciones_inapp WHERE tipo = 'f29' AND DATE(creado_en) = CURDATE() LIMIT 1`,
+                    []
                 );
+                if (!yaNotificado?.length) {
+                    await db.ejecutarQuery(
+                        `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, ?, 'f29')`,
+                        [
+                            tituloNotif,
+                            `Período ${getNombreMes(mesDeclaracion)} ${añoDeclaracion}. Vence el ${vencimientoStr}`,
+                            vencimiento.toISOString().slice(0, 10)
+                        ]
+                    );
+                }
             } catch (_) {}
         } else {
             errores++;
