@@ -95,19 +95,26 @@ export async function getVersionById(id) {
     return rows?.[0] ?? null;
 }
 
-export async function createVersion({ nombre, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo }) {
+export async function createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo }) {
     const result = await db().ejecutarQuery(
-        `INSERT INTO qa_versiones (nombre, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
-        [nombre, descripcion ?? null, id_proyecto ?? null, version_tag ?? null,
-         estado ?? 'Planificado', fecha_inicio ?? null, fecha_objetivo ?? null]
+        `INSERT INTO qa_versiones (nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [nombre,
+         tipo_contexto   ?? 'Actualizacion',
+         nombre_producto ?? null,
+         descripcion     ?? null,
+         id_proyecto     ?? null,
+         version_tag     ?? null,
+         estado          ?? 'Planificado',
+         fecha_inicio    ?? null,
+         fecha_objetivo  ?? null]
     );
     return result.insertId;
 }
 
 export async function updateVersion(id, campos) {
-    const permitidos = ['nombre','descripcion','id_proyecto','version_tag','estado','fecha_inicio','fecha_objetivo'];
-    const nullable   = new Set(['descripcion','id_proyecto','version_tag','fecha_inicio','fecha_objetivo']);
+    const permitidos = ['nombre','tipo_contexto','nombre_producto','descripcion','id_proyecto','version_tag','estado','fecha_inicio','fecha_objetivo'];
+    const nullable   = new Set(['nombre_producto','descripcion','id_proyecto','version_tag','fecha_inicio','fecha_objetivo']);
     const sets = [], params = [];
     for (const [k, v] of Object.entries(campos)) {
         if (permitidos.includes(k) && v !== undefined && (nullable.has(k) || v !== null)) {
