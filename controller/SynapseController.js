@@ -1,6 +1,11 @@
 import * as Synapse from '../model/Synapse.js';
 import ConfiguracionFinanciera from '../model/ConfiguracionFinanciera.js';
 import { sendBrevoEmail } from '../services/emailUtils.js';
+import { emitUpdate } from '../config/socket.js';
+import { sendPushToAll } from '../services/pushService.js';
+import DataBase from '../config/Database.js';
+
+const db = () => DataBase.getInstance();
 
 const err = (res, e, status = 500) => {
     console.error('[SYNAPSE]', e?.message || e);
@@ -105,6 +110,28 @@ export default class SynapseController {
             if (!titulo) return res.status(400).json({ error: 'El título es requerido.' });
             if (!id_estado) return res.status(400).json({ error: 'El estado es requerido.' });
             const data = await Synapse.createTarea(req.body);
+
+            // Notificación in-app + push al crear ticket
+            try {
+                let notifTitulo;
+                if (data.asignado_nombre) {
+                    notifTitulo = `Ticket asignado a ${data.asignado_nombre}`;
+                } else if (data.team_nombre) {
+                    const emoji = data.team_emoji ? `${data.team_emoji} ` : '';
+                    notifTitulo = `Nuevo ticket para equipo ${emoji}${data.team_nombre}`;
+                } else {
+                    notifTitulo = 'Nuevo ticket creado (sin asignación)';
+                }
+                await db().ejecutarQuery(
+                    `INSERT INTO notificaciones_inapp (titulo, descripcion, fecha_evento, tipo) VALUES (?, ?, NOW(), 'ticket_nuevo')`,
+                    [notifTitulo, titulo]
+                );
+                emitUpdate('ncf:update');
+                sendPushToAll(notifTitulo, titulo, '/synapse').catch(() => {});
+            } catch (ne) {
+                console.error('[SYNAPSE] Error al crear notificación:', ne.message);
+            }
+
             res.status(201).json(data);
         } catch (e) { err(res, e); }
     }
