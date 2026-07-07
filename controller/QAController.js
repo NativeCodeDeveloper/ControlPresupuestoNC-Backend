@@ -89,9 +89,9 @@ export default class QAController {
 
     static async crearVersion(req, res) {
         try {
-            const { nombre, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo } = req.body;
+            const { nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo } = req.body;
             if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
-            const id = await QA.createVersion({ nombre, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo });
+            const id = await QA.createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo });
             const version = await QA.getVersionById(id);
             emitUpdate('ncf:update');
             res.status(201).json({ ok: true, id_version: id, version });
