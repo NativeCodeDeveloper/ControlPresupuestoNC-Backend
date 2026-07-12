@@ -20,6 +20,17 @@ export default class SoporteController {
         }
     }
 
+    static async reorderEstados(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: 'Se requiere un array de ids.' });
+            await Soporte.reorderEstados(ids);
+            res.json({ ok: true });
+        } catch (e) {
+            res.status(500).json({ message: 'Error al reordenar estados' });
+        }
+    }
+
     // ─── Tickets ──────────────────────────────────────────────────────────────
 
     static async listar(req, res) {

@@ -7,6 +7,7 @@ const router = Router();
 // Estados (rutas estáticas primero)
 router.get('/estados',          SoporteController.listarEstados);
 router.post('/estados',         SoporteController.crearEstado);
+router.patch('/estados/reorder', SoporteController.reorderEstados);
 router.delete('/estados/:id',   SoporteController.eliminarEstado);
 
 // Actualizaciones — estados (antes de /actualizaciones para evitar shadowing)

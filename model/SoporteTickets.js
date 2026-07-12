@@ -61,6 +61,17 @@ export async function deleteEstado(id) {
     );
 }
 
+export async function reorderEstados(orderedIds) {
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE soporte_estados SET orden = CASE id_estado ${cases} END WHERE id_estado IN (${ids})`,
+        [...params, ...orderedIds]
+    );
+}
+
 // ─── Tickets — CRUD ───────────────────────────────────────────────────────────
 
 export async function getTickets({ estado, prioridad, responsable } = {}) {
