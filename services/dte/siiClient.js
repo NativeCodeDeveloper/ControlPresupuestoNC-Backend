@@ -40,9 +40,12 @@ async function soapCall(url, bodyXml, soapAction) {
 }
 
 // Extrae el contenido de un tag XML por nombre, sin depender de un parser estricto — el SOAP
-// response envuelve el XML de respuesta del SII como string escapado dentro de *Return.
+// response envuelve el XML de respuesta del SII como string escapado dentro de *Return. El
+// servidor SOAP del SII (Axis/Java) antepone un prefijo de namespace variable al tag raíz de la
+// respuesta (ej. <ns1:getSeedReturn>, confirmado contra la respuesta real de CrSeed.jws) — el
+// prefijo exacto no está garantizado, así que se acepta cualquiera.
 function extractTag(xml, tagName) {
-    const match = xml.match(new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)</${tagName}>`, 'i'));
+    const match = xml.match(new RegExp(`<(?:[\\w.-]+:)?${tagName}[^>]*>([\\s\\S]*?)</(?:[\\w.-]+:)?${tagName}>`, 'i'));
     return match ? match[1].trim() : null;
 }
 
