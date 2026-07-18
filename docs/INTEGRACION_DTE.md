@@ -160,10 +160,9 @@ Corre con `node services/dte/verify.js`, sin CAF ni certificado real, sin tocar 
 5. Pipeline completo con los datos reales del **CASO-1 del Set de Pruebas** (Cambio de aceite +
    Alineación y balanceo) — arma, firma y genera el PNG del PDF417, de punta a punta.
 
-**Última corrida: 15/15 verificaciones pasaron.** Antes de desplegar al VPS, volver a correr
-`verify.js` ahí — se firmó con `RSA-SHA1`, que en Node 20/OpenSSL 3 (versión del VPS, ver
-`Dockerfile`) debería seguir funcionando sin flags especiales, pero no se ha confirmado en ese
-entorno específico todavía (se verificó en local, Node 25).
+**15/15 verificaciones pasan, confirmado tanto en local como en el VPS real** (Node 22.21.0 en el
+VPS — no Node 20 como sugería el `Dockerfile`, que resultó no ser el runtime real usado por PM2).
+`RSA-SHA1` firma y verifica sin problemas ni flags especiales en ese entorno.
 
 ---
 
@@ -346,8 +345,7 @@ listo; falta la Fase 1C para poder ejecutar este procedimiento.
 
 ### Fase 1B — Motor de firma/timbre nativo
 - [x] `ted.js`, `pdf417.js`, `signXml.js`, `dteXml.js`, `envioDte.js`
-- [x] `verify.js` — 15/15 verificaciones pasan localmente
-- [ ] Correr `verify.js` en el VPS (confirmar `RSA-SHA1` funciona igual en Node 20/OpenSSL 3)
+- [x] `verify.js` — 15/15 verificaciones pasan, confirmado en local y en el VPS real (Node 22)
 - [ ] Subir el certificado `.pfx` real al VPS (fuera de git) y probar `pfxToPem` con él
 
 ### Fase 1C — Cliente SOAP SII
