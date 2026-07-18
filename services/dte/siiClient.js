@@ -123,6 +123,23 @@ export async function obtenerToken(pemData, ambiente = 'certificacion') {
 }
 
 /**
+ * Interpreta el texto crudo que devuelve DTEUpload. Distingue explícitamente "no se encontró un
+ * <STATUS>" (respuesta inesperada — ej. la página HTML de error genérica que el SII devuelve
+ * cuando el archivo ni siquiera pasa su chequeo inicial) de "<STATUS>0</STATUS>" (aceptado). Esto
+ * importa porque `Number(null)` da `0` en JS — confundir ambos casos haría que un envío que jamás
+ * llegó a procesarse quedara marcado como exitoso. Confirmado en la primera prueba real contra el
+ * SII (respuesta HTML sin STATUS ni TRACKID, ver docs/INTEGRACION_DTE.md §2.7).
+ * @param {string} text
+ * @returns {{ status: number|null, trackId: string|null }}
+ */
+export function parseUploadResponse(text) {
+    const statusRaw = extractTag(text, 'STATUS');
+    const status = statusRaw !== null ? Number(statusRaw) : null;
+    const trackId = extractTag(text, 'TRACKID');
+    return { status, trackId };
+}
+
+/**
  * Envía un sobre EnvioDTE ya firmado al SII vía upload (multipart/form-data).
  * Referencia: Manual Desarrollador Externo — Envío Automático DTE (OI2003_UPDTE_MDE), Cap. 2.
  * @param {Object} params
@@ -133,7 +150,7 @@ export async function obtenerToken(pemData, ambiente = 'certificacion') {
  * @param {string} params.dvCompania - dígito verificador de la empresa
  * @param {string} params.token
  * @param {'certificacion'|'produccion'} [params.ambiente]
- * @returns {Promise<{ status: number, trackId: string|null, raw: string }>}
+ * @returns {Promise<{ status: number|null, trackId: string|null, raw: string }>}
  */
 export async function enviarSetDte({ envioXmlFirmado, rutEnvia, dvEnvia, rutCompania, dvCompania, token, ambiente = 'certificacion' }) {
     const host = SII_HOSTS[ambiente];
@@ -152,8 +169,7 @@ export async function enviarSetDte({ envioXmlFirmado, rutEnvia, dvEnvia, rutComp
         body: form,
     });
     const text = await res.text();
-    const status = Number(extractTag(text, 'STATUS'));
-    const trackId = extractTag(text, 'TRACKID');
+    const { status, trackId } = parseUploadResponse(text);
     return { status, trackId, raw: text };
 }
 

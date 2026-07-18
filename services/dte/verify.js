@@ -10,6 +10,10 @@
  * 5. Pipeline completo (CASO-1 del Set de Pruebas real) — build + firma + PDF417, sin errores.
  * 6. Regresión: truncar-antes-de-escapar (no cortar entidades XML a la mitad) y validaciones de
  *    entrada de buildYFirmarDte (detalle vacío, emisor incompleto).
+ * 7. Regresión: parseUploadResponse() no debe confundir "sin <STATUS> en la respuesta" (ej. la
+ *    página HTML de error genérica que el SII devuelve cuando el archivo no pasa su chequeo
+ *    inicial) con "<STATUS>0</STATUS>" (aceptado) — Number(null) da 0 en JS, así que esto se
+ *    verifica explícitamente contra la respuesta real capturada en la primera prueba en vivo.
  */
 import crypto from 'crypto';
 import forge from 'node-forge';
@@ -20,6 +24,7 @@ import { canonicalizeSiiTed, buildTedDatos, signTed, verifyTed, escapeTedText } 
 import { pfxToPem, signDocumento } from './signXml.js';
 import { buildYFirmarDte, computeMontosBoleta } from './dteXml.js';
 import { generarTimbrePdf417 } from './pdf417.js';
+import { parseUploadResponse } from './siiClient.js';
 
 // Genera un certificado autofirmado + llave, empaquetado como .pfx en memoria, para probar los
 // flujos de firma sin depender del certificado real del usuario.
@@ -303,6 +308,25 @@ console.log('\n[6] Regresión — truncado seguro y validaciones de entrada');
             return false;
         } catch { return true; }
     })());
+}
+
+// ── 7. Regresión: parseUploadResponse no debe confundir "sin STATUS" con "STATUS=0" ──
+console.log('\n[7] Regresión — parseo de la respuesta de enviarSetDte (bug real encontrado en la primera prueba en vivo)');
+{
+    // Respuesta HTML real capturada de maullin.sii.cl al enviar un sobre con CAF sintético
+    // (no autorizado) — el SII rechaza antes de asignar STATUS/TRACKID, sin devolver el XML
+    // <RECEPCIONDTE> documentado. Number(extractTag(...) ?? null) daba 0 antes del fix, lo que
+    // habría marcado como "enviado" un envío que en realidad nunca fue procesado.
+    const htmlErrorReal = `<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN">
+<html><body><p>HA OCURRIDO UN ERROR EN EL UPLOAD DEL ARCHIVO DE DOCUMENTOS TRIBUTARIOS ELECTRONICOS.</p></body></html>`;
+    const { status, trackId } = parseUploadResponse(htmlErrorReal);
+    check('parseUploadResponse: respuesta sin <STATUS> da status=null (no 0)', status === null, `obtenido: ${status}`);
+    check('parseUploadResponse: respuesta sin <TRACKID> da trackId=null', trackId === null);
+
+    const xmlExitoso = '<RECEPCIONDTE><STATUS>0</STATUS><TRACKID>123456789</TRACKID></RECEPCIONDTE>';
+    const exitoso = parseUploadResponse(xmlExitoso);
+    check('parseUploadResponse: STATUS=0 real se distingue de "sin STATUS"', exitoso.status === 0, `obtenido: ${exitoso.status}`);
+    check('parseUploadResponse: extrae el TRACKID cuando sí viene', exitoso.trackId === '123456789', `obtenido: ${exitoso.trackId}`);
 }
 
 console.log(`\n${failed === 0 ? '✅ Todas las verificaciones pasaron.' : `❌ ${failed} verificación(es) fallaron.`}\n`);

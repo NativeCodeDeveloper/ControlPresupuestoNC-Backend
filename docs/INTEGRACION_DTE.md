@@ -163,7 +163,7 @@ Corre con `node services/dte/verify.js`, sin CAF ni certificado real, sin tocar 
 5. Pipeline completo con los datos reales del **CASO-1 del Set de Pruebas** (Cambio de aceite +
    Alineación y balanceo) — arma, firma y genera el PNG del PDF417, de punta a punta.
 
-**21/21 verificaciones pasan, confirmado tanto en local como en el VPS real** (Node 22.21.0 en el
+**25/25 verificaciones pasan, confirmado tanto en local como en el VPS real** (Node 22.21.0 en el
 VPS — no Node 20 como sugería el `Dockerfile`, que resultó no ser el runtime real usado por PM2).
 `RSA-SHA1` firma y verifica sin problemas ni flags especiales en ese entorno. Las últimas 6
 verificaciones (sección 6, "Regresión") cubren los 3 bugs encontrados y arreglados durante el
@@ -203,12 +203,25 @@ real (`dteService.emitirDte`) los llame con un folio de verdad.
 folios de verdad. Se hace una sola vez por tipo de documento, durante la ventana de certificación
 de 24h, después de que el Tipo B ya confirmó que la autenticación y el envío funcionan.
 
-**Bug real que el Tipo A no podía detectar (ejemplo concreto):** `extractTag()` en `siiClient.js`
-asumía que el SOAP del SII devolvía `<getSeedReturn>` sin prefijo. El servidor SOAP real del SII
-(Axis/Java) antepone un prefijo de namespace variable (`<ns1:getSeedReturn>`), algo que no está
-en ningún WSDL ni ejemplo de la documentación pública — solo se vio al hacer la prueba Tipo B
-contra `maullin.sii.cl` real. `verify.js` no lo pudo atrapar porque no llama al SII. Corregido:
-el regex ahora acepta cualquier prefijo de namespace (o ninguno).
+**Bugs reales que el Tipo A no podía detectar (ejemplos concretos, ambos de la primera sesión de
+pruebas en vivo, 2026-07-18):**
+
+1. `extractTag()` en `siiClient.js` asumía que el SOAP del SII devolvía `<getSeedReturn>` sin
+   prefijo. El servidor SOAP real del SII (Axis/Java) antepone un prefijo de namespace variable
+   (`<ns1:getSeedReturn>`), algo que no está en ningún WSDL ni ejemplo de la documentación pública
+   — solo se vio al hacer la prueba Tipo B contra `maullin.sii.cl` real. Corregido: el regex ahora
+   acepta cualquier prefijo de namespace (o ninguno).
+2. Al probar `enviarSetDte` con un CAF sintético (rechazo esperado), el SII devolvió una página
+   HTML de error genérica en vez del XML `<RECEPCIONDTE>` documentado — sin `STATUS` ni
+   `TRACKID`. Como `Number(null)` da `0` en JS, el código original interpretaba "no vino STATUS"
+   como "STATUS=0" (éxito): un envío que el SII ni siquiera procesó habría quedado marcado
+   "enviado" para siempre, sin Track ID para que el cron lo revisara. Corregido con
+   `parseUploadResponse()`, que distingue explícitamente ambos casos — ahora con test de
+   regresión Tipo A permanente (`verify.js` §7) usando la respuesta HTML real capturada.
+
+Ninguno de los dos lo podía atrapar `verify.js` porque ninguno depende de la especificación en
+PDF — dependen de cómo se comporta el servidor real del SII, que en ambos casos se desvía
+levemente de lo documentado.
 
 ---
 
@@ -243,8 +256,15 @@ anteriores encadenados), `enviarSetDte()`, `consultarEstadoEnvio()`.
 - `enviarSetDte`: implementado según el "Manual Desarrollador Externo — Envío Automático DTE"
   (OI2003_UPDTE_MDE) del propio SII — endpoint `POST /cgi_dte/UPL/DTEUpload`, multipart con
   `rutSender`/`dvSender`/`rutCompany`/`dvCompany`/`archivo`, respuesta `<RECEPCIONDTE><STATUS>`/`<TRACKID>`.
-  Confianza alta por la fuente, pero **todavía no probado en vivo** — hacerlo con una prueba Tipo B
-  antes del primer envío real con folios (§2.7).
+  **Probado en vivo** (2026-07-18, prueba Tipo B con un CAF sintético — rechazo esperado, ver
+  abajo). El transporte funciona (firma XMLDSig del sobre con el certificado real, multipart bien
+  formado, el SII responde 200). El SII **no siempre devuelve el XML `<RECEPCIONDTE>` documentado**
+  — con un CAF no autorizado devolvió una página HTML de error genérica sin `STATUS` ni `TRACKID`.
+  Eso reveló un bug real: `Number(null)` da `0` en JS, así que "no vino STATUS" se estaba
+  confundiendo con "STATUS=0" (éxito) — un envío fallido habría quedado marcado como exitoso, y al
+  no tener Track ID tampoco lo habría revisado nunca el cron de estados. **Arreglado**:
+  `parseUploadResponse()` (nueva función, exportada y con test de regresión en `verify.js` §7)
+  distingue explícitamente ambos casos.
 - `consultarEstadoEnvio`: basado en el endpoint `QueryEstUp.jws`, ampliamente documentado en
   guías públicas de integración pero **no confirmado contra un WSDL propio ni contra el SII real
   todavía** — verificar formato exacto de respuesta (¿también con prefijo de namespace en el tag
@@ -439,15 +459,16 @@ El sistema ya tiene todo lo necesario en el frontend — la emisión real toma e
 
 ### Fase 1B — Motor de firma/timbre nativo
 - [x] `ted.js`, `pdf417.js`, `signXml.js`, `dteXml.js`, `envioDte.js`
-- [x] `verify.js` — 21/21 verificaciones pasan, confirmado en local y en el VPS real (Node 22)
+- [x] `verify.js` — 25/25 verificaciones pasan, confirmado en local y en el VPS real (Node 22)
 - [x] Certificado `.pfx` real subido al VPS y probado con `pfxToPem` — OK, titular confirmado
 
 ### Fase 1C — Cliente SOAP SII
 - [x] `services/dte/siiClient.js`: semilla/token/envío/consulta estado (construido)
 - [x] Probado contra `maullin.sii.cl` con el certificado real — semilla+token OK (2026-07-18)
-- [ ] Probar `enviarSetDte` (prueba Tipo B, §2.7) antes de gastar folios reales
+- [x] Probado `enviarSetDte` en vivo (CAF sintético, rechazo esperado) — transporte OK, encontrado
+      y arreglado un bug real de parseo de respuesta (`parseUploadResponse`, §2.7)
 - [ ] Verificar formato real de `consultarEstadoEnvio` (probablemente también con prefijo de
-      namespace, como pasó con `getSeedReturn` — ver §2.7)
+      namespace, como pasó con `getSeedReturn` — ver §2.7) — pendiente de una prueba Tipo B
 
 ### Fase 2 — Backend
 - [x] Tablas `dte_documentos` + `dte_folios_consumidos` + `dte_caf` (ya en producción)
