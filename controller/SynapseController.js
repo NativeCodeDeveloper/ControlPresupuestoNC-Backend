@@ -306,11 +306,6 @@ export default class SynapseController {
                     box-shadow:0 1px 4px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.07);
                     overflow:hidden;">
 
-        <!-- Top accent line -->
-        <tr>
-          <td style="background:#6366f1;height:4px;font-size:0;line-height:0;">&nbsp;</td>
-        </tr>
-
         <!-- Header -->
         <tr>
           <td style="padding:36px 52px 28px;">
