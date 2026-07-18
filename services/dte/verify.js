@@ -8,13 +8,15 @@
  * 3. Firma/verificación del TED (SHA1withRSA) con un par de llaves de prueba — round-trip.
  * 4. Firma/verificación XMLDSig del DTE completo con un certificado autofirmado de prueba — round-trip.
  * 5. Pipeline completo (CASO-1 del Set de Pruebas real) — build + firma + PDF417, sin errores.
+ * 6. Regresión: truncar-antes-de-escapar (no cortar entidades XML a la mitad) y validaciones de
+ *    entrada de buildYFirmarDte (detalle vacío, emisor incompleto).
  */
 import crypto from 'crypto';
 import forge from 'node-forge';
 import { SignedXml } from 'xml-crypto';
 import { DOMParser } from '@xmldom/xmldom';
 import xpath from 'xpath';
-import { canonicalizeSiiTed, buildTedDatos, signTed, verifyTed } from './ted.js';
+import { canonicalizeSiiTed, buildTedDatos, signTed, verifyTed, escapeTedText } from './ted.js';
 import { pfxToPem, signDocumento } from './signXml.js';
 import { buildYFirmarDte, computeMontosBoleta } from './dteXml.js';
 import { generarTimbrePdf417 } from './pdf417.js';
@@ -247,6 +249,60 @@ console.log('\n[5] Pipeline completo — CASO-1 del Set de Pruebas (Cambio de ac
     } else {
         check('montoTotal / TED / Signature / PDF417 (omitidos por error previo)', false);
     }
+}
+
+// ── 6. Regresión: truncado seguro de entidades XML + validaciones de entrada ──
+console.log('\n[6] Regresión — truncado seguro y validaciones de entrada');
+{
+    // "Empresa&B" (9 chars) truncado a 8 no debe cortar la entidad "&amp;" a la mitad.
+    const resultado = escapeTedText('Empresa&Bcia', 8);
+    check('escapeTedText trunca antes de escapar (no corta entidades XML)', !/&[a-z]*$/i.test(resultado) || resultado.endsWith(';') || !resultado.includes('&'),
+        `obtenido: "${resultado}"`);
+    check('escapeTedText no produce una entidad incompleta como salida', resultado === 'Empresa' || /^[^&]*(&(amp|lt|gt|quot|apos);)*$/.test(resultado),
+        `obtenido: "${resultado}"`);
+
+    const cafSintetico = generarCafDePrueba();
+    const pemData = generarPfxDePrueba();
+
+    check('buildYFirmarDte rechaza detalle vacío', (() => {
+        try {
+            buildYFirmarDte({ tipoDte: 39, folio: 1, fechaEmision: '2026-07-18', emisor: { rut: cafSintetico.rutEmisor, razonSocial: 'X' }, receptor: {}, detalle: [], caf: cafSintetico, pemData });
+            return false;
+        } catch { return true; }
+    })());
+
+    check('buildYFirmarDte rechaza emisor sin razón social', (() => {
+        try {
+            buildYFirmarDte({ tipoDte: 39, folio: 1, fechaEmision: '2026-07-18', emisor: { rut: cafSintetico.rutEmisor }, receptor: {}, detalle: [{ nombre: 'x', cantidad: 1, precioUnitario: 100 }], caf: cafSintetico, pemData });
+            return false;
+        } catch { return true; }
+    })());
+
+    const cafFactura = generarCafDePrueba({ tipoDte: 33 });
+    check('buildYFirmarDte normaliza un RUT de receptor con puntos', (() => {
+        const { dteXmlFirmado } = buildYFirmarDte({
+            tipoDte: 33, folio: 1, fechaEmision: '2026-07-18',
+            emisor: { rut: cafFactura.rutEmisor, razonSocial: 'NATIVECODE SPA' },
+            receptor: { rut: '12.345.678-5', nombre: 'Cliente Con Puntos' },
+            detalle: [{ nombre: 'Servicio', cantidad: 1, precioUnitario: 1000 }],
+            caf: cafFactura, pemData,
+        });
+        return dteXmlFirmado.includes('<RUTRecep>12345678-5</RUTRecep>') && !dteXmlFirmado.includes('12.345.678-5');
+    })());
+
+    check('buildYFirmarDte rechaza un CAF de tipo distinto al solicitado', (() => {
+        try {
+            buildYFirmarDte({
+                tipoDte: 33, folio: 1, fechaEmision: '2026-07-18',
+                emisor: { rut: cafSintetico.rutEmisor, razonSocial: 'NATIVECODE SPA' },
+                receptor: { nombre: 'x' },
+                detalle: [{ nombre: 'x', cantidad: 1, precioUnitario: 100 }],
+                caf: cafSintetico, // es de tipo 39, se pide emitir 33
+                pemData,
+            });
+            return false;
+        } catch { return true; }
+    })());
 }
 
 console.log(`\n${failed === 0 ? '✅ Todas las verificaciones pasaron.' : `❌ ${failed} verificación(es) fallaron.`}\n`);

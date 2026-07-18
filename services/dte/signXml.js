@@ -97,3 +97,48 @@ export function signDocumento(xmlString, pemData, referenceId) {
     sig.computeSignature(xmlString);
     return sig.getSignedXml();
 }
+
+/**
+ * Firma un XML completo (sin atributo ID), referenciando el documento entero (URI vacía).
+ * Usado para firmar la semilla al autenticarse contra el SII (getToken), donde el XML a firmar
+ * es <getToken><item><Semilla>...</Semilla></item></getToken> sin ID — Manual Desarrollador
+ * Autenticación Automática (OI2003_AUTAUTOM_MDE).
+ *
+ * @param {string} xmlString
+ * @param {{ privateKeyPem: string, certPem: string, certificate: forge.pki.Certificate }} pemData
+ * @returns {string}
+ */
+export function signWholeDocument(xmlString, pemData) {
+    const { privateKeyPem, certPem, certificate } = pemData;
+    const publicKey = certificate.publicKey;
+
+    const sig = new SignedXml({
+        privateKey: privateKeyPem,
+        publicCert: certPem,
+        signatureAlgorithm: RSA_SHA1,
+        canonicalizationAlgorithm: C14N,
+        getKeyInfoContent: () => {
+            const modulus = wrapBase64(bigIntToBase64(publicKey.n));
+            const exponent = bigIntToBase64(publicKey.e);
+            const x509 = wrapBase64(forge.util.encode64(
+                forge.asn1.toDer(forge.pki.certificateToAsn1(certificate)).getBytes()
+            ));
+            return (
+                `<KeyValue><RSAKeyValue><Modulus>${modulus}</Modulus>` +
+                `<Exponent>${exponent}</Exponent></RSAKeyValue></KeyValue>` +
+                `<X509Data><X509Certificate>${x509}</X509Certificate></X509Data>`
+            );
+        },
+    });
+
+    sig.addReference({
+        xpath: '/*',
+        transforms: [ENVELOPED, C14N],
+        digestAlgorithm: SHA1,
+        uri: '',
+        isEmptyUri: true,
+    });
+
+    sig.computeSignature(xmlString);
+    return sig.getSignedXml();
+}

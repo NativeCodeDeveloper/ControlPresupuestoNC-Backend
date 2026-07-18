@@ -8,10 +8,13 @@ import { XMLParser } from 'fast-xml-parser';
 
 const XML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
 
-// Escapa las 5 entidades XML predefinidas (Anexo 2.4) y trunca al largo máximo del campo.
+// Trunca al largo máximo del campo y luego escapa las 5 entidades XML predefinidas (Anexo 2.4).
+// El orden importa: truncar después de escapar podría cortar una entidad a la mitad (ej.
+// "Empresa&amp;B" cortado en el carácter 9 quedaría "Empresa&a", XML inválido).
 export function escapeTedText(value, maxLength) {
-    const str = String(value ?? '').replace(/[&<>"']/g, (c) => XML_ENTITIES[c]);
-    return maxLength ? str.slice(0, maxLength) : str;
+    const str = String(value ?? '');
+    const truncated = maxLength ? str.slice(0, maxLength) : str;
+    return truncated.replace(/[&<>"']/g, (c) => XML_ENTITIES[c]);
 }
 
 // Parsea el XML del CAF (tal como lo entrega el SII) y devuelve sus campos relevantes.

@@ -10,12 +10,24 @@ import { signDocumento } from './signXml.js';
 // que NativeCode necesita para facturar sus propios servicios y el Set de Pruebas del SII.
 
 const XML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
+// Trunca antes de escapar (no al revés) para no cortar una entidad XML a la mitad.
 const escapeXml = (value, maxLength) => {
-    const str = String(value ?? '').replace(/[&<>"']/g, (c) => XML_ENTITIES[c]);
-    return maxLength ? str.slice(0, maxLength) : str;
+    const str = String(value ?? '');
+    const truncated = maxLength ? str.slice(0, maxLength) : str;
+    return truncated.replace(/[&<>"']/g, (c) => XML_ENTITIES[c]);
 };
 
 const tag = (name, value) => (value === undefined || value === null || value === '' ? '' : `<${name}>${value}</${name}>\n`);
+
+// Normaliza un RUT chileno al formato que exige el SII (cuerpo numérico + guion + DV, sin
+// puntos). Defensivo: el frontend ya normaliza, pero el backend no debe confiar en eso —
+// cualquier llamador (frontend, script, prueba manual) podría mandar un RUT con puntos.
+function normalizeRut(value) {
+    if (!value) return value;
+    const clean = String(value).replace(/[.\s]/g, '').toUpperCase();
+    const match = clean.match(/^(\d{1,8})-?([\dK])$/);
+    return match ? `${match[1]}-${match[2]}` : clean;
+}
 
 /**
  * Calcula los montos de una Boleta (39): los precios de línea vienen brutos (con IVA incluido),
@@ -140,6 +152,22 @@ function buildDetalle(detalle) {
  * @returns {{ documentoId: string, montos: object, dteXmlFirmado: string }}
  */
 export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, caf, pemData }) {
+    if (!Array.isArray(detalle) || detalle.length === 0) {
+        throw new Error('El documento requiere al menos una línea de detalle');
+    }
+    if (!emisor?.rut || !emisor?.razonSocial) {
+        throw new Error('Faltan datos del emisor (RUT y razón social son obligatorios)');
+    }
+    if (caf.tipoDte !== tipoDte) {
+        // El TED toma el tipo de documento del propio CAF (ted.js), no del parámetro tipoDte —
+        // si no coinciden, el documento quedaría autoinconsistente (Encabezado dice un tipo,
+        // Timbre dice otro) sin que nada lo detecte.
+        throw new Error(`El CAF cargado es para tipo ${caf.tipoDte}, pero se pidió emitir tipo ${tipoDte}`);
+    }
+
+    const emisorNorm = { ...emisor, rut: normalizeRut(emisor.rut) };
+    const receptorNorm = { ...receptor, rut: normalizeRut(receptor.rut) || '66666666-6' };
+
     const montos = tipoDte === 39 || tipoDte === 41 ? computeMontosBoleta(detalle) : computeMontosFactura(detalle);
     const timestamp = new Date().toISOString().slice(0, 19);
     const documentoId = `F${String(folio).padStart(10, '0')}T${tipoDte}`;
@@ -148,14 +176,14 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
         caf,
         folio,
         fechaEmision,
-        rutReceptor: receptor.rut || '66666666-6',
-        razonSocialReceptor: receptor.nombre,
+        rutReceptor: receptorNorm.rut,
+        razonSocialReceptor: receptorNorm.nombre,
         montoTotal: montos.montoTotal,
         primerItem: detalle[0]?.nombre || '',
         timestamp,
     });
 
-    const encabezado = buildEncabezado({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, montos });
+    const encabezado = buildEncabezado({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor: emisorNorm, receptor: receptorNorm, montos });
     const detalleXml = buildDetalle(detalle);
 
     const documentoXml =

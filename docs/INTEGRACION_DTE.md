@@ -1,8 +1,9 @@
 # Integración DTE — Facturación Electrónica SII (motor nativo en Node)
 
-> **Estado:** Etapa 1 (formulario + PDF borrador) y el motor de firma/timbre nativo (Fase 1B)
-> están completos y verificados. Falta: CAF real + cliente SOAP contra el SII (Fase 1C) + tabla de
-> tracking/rutas/UI real (Fase 2/3).
+> **Estado:** Etapa 1, Fase 1B (motor de firma/timbre), Fase 1C (cliente SOAP, sin probar contra
+> el SII real), Fase 2 (backend: tablas, orquestador, rutas) y Fase 3 (frontend: botón "Emitir
+> DTE" real + "usar datos del último documento") están completas. **Solo falta el CAF real** —
+> todo lo demás está construido y listo para cuando llegue.
 > **Objetivo:** Emitir boletas electrónicas (Tipo 39) y facturas electrónicas (Tipo 33) desde
 > NativeCode Finance, validadas por el SII, directamente al registrar un pago o desde el
 > Production Cockpit.
@@ -183,82 +184,86 @@ si no → Boleta Electrónica (Tipo 39)
 
 ---
 
-## 4. Próximos pasos — Fase 1C (cliente SOAP) + Fase 2 (backend) + Fase 3 (frontend)
+## 4. Fase 1C + 2 + 3 — TODO CONSTRUIDO, solo falta el CAF real
 
-### 4.1 Fase 1C — Cliente SOAP contra el SII (pendiente, requiere CAF)
+### 4.1 Fase 1C — Cliente SOAP (`services/dte/siiClient.js`)
 
-Endpoints reales confirmados:
-- Certificación: `maullin.sii.cl` · Producción: `palena.sii.cl`
-- `GET/POST https://maullin.sii.cl/DTEWS/CrSeed.jws` → obtener semilla
-- Firmar la semilla (XML `getToken`) con el certificado, vía `signXml.js` (mismo mecanismo que el
-  DTE completo)
-- `POST https://maullin.sii.cl/DTEWS/GetTokenFromSeed.jws` → canjear por token
-- Token se usa como `Cookie: TOKEN=...` en las siguientes llamadas (upload del sobre, consulta de
-  estado por Track ID)
+Implementado: `getSemilla()`, `firmarSemilla()`, `getToken()`, `obtenerToken()` (los tres
+anteriores encadenados), `enviarSetDte()`, `consultarEstadoEnvio()`.
 
-A implementar en `services/dte/siiClient.js`: `getSemilla()`, `firmarSemilla()`, `getToken()`,
-`enviarSetDte(envioXml)`, `consultarEstadoEnvio(trackId)`.
+- `getSemilla`/`getToken`: verificados contra el **WSDL público real** de `CrSeed.jws` y
+  `GetTokenFromSeed.jws` (operaciones `getSeed`/`getToken`, parámetro `pszXml`) — confianza alta.
+- `enviarSetDte`: implementado según el "Manual Desarrollador Externo — Envío Automático DTE"
+  (OI2003_UPDTE_MDE) del propio SII — endpoint `POST /cgi_dte/UPL/DTEUpload`, multipart con
+  `rutSender`/`dvSender`/`rutCompany`/`dvCompany`/`archivo`, respuesta `<RECEPCIONDTE><STATUS>`/`<TRACKID>`.
+  Confianza alta, usa `fetch`+`FormData` nativos de Node en vez de armar el multipart a mano.
+- `consultarEstadoEnvio`: basado en el endpoint `QueryEstUp.jws`, ampliamente documentado en
+  guías públicas de integración pero **no confirmado contra un WSDL propio en esta sesión** —
+  verificar formato exacto de respuesta en la primera prueba real.
 
-### 4.2 Fase 2 — Backend (persistencia + orquestación)
+**Nada de esto se ha probado contra el SII real todavía** (no hay CAF ni certificado en el
+servidor) — probar primero con datos sintéticos/de certificación antes de gastar folios reales.
 
-**Tabla nueva:** `dte_documentos`
+### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
-```sql
-CREATE TABLE dte_documentos (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    id_proyecto     INT NOT NULL,
-    id_pago         INT,
-    tipo_dte        TINYINT NOT NULL COMMENT '33=Factura, 39=Boleta, 61=NC',
-    folio           INT NOT NULL,
-    track_id        VARCHAR(50),
-    estado_sii      ENUM('pendiente','aceptado','rechazado','observado') DEFAULT 'pendiente',
-    monto_neto      DECIMAL(12,2),
-    monto_iva       DECIMAL(12,2),
-    monto_total     DECIMAL(12,2),
-    xml_firmado     MEDIUMTEXT,
-    emitido_en      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    activo          TINYINT(1) NOT NULL DEFAULT 1,
-    INDEX idx_proyecto (id_proyecto),
-    INDEX idx_estado (estado_sii)
-);
+Tablas creadas en producción (`migration_dte_documentos.sql`, ya ejecutada): `dte_documentos`,
+`dte_folios_consumidos`, y **`dte_caf`** (metadata de los CAF cargados: rango, ruta del archivo,
+ambiente — permite tener varios CAF activos y saber cuál usar).
 
-CREATE TABLE dte_folios_consumidos (
-    id              INT AUTO_INCREMENT PRIMARY KEY,
-    tipo_dte        TINYINT NOT NULL,
-    folio           INT NOT NULL,
-    id_dte_documento INT,
-    UNIQUE KEY uq_folio (tipo_dte, folio)
-);
+**Servicio:** `services/dteService.js` — `emitirDte()` orquesta: reserva atómica de folio
+(`FOR UPDATE` + transacción, recorre CAFs activos y avanza al siguiente cuando uno se agota) →
+`buildYFirmarDte` → arma y firma el sobre (`envioDte.js`) → `siiClient.obtenerToken` +
+`enviarSetDte` → persiste en `dte_documentos` (éxito o error, sin perder el folio ya reservado).
+También: `obtenerUltimoDocumento()` (para "similar al último"), `obtenerHistorialProyecto()`,
+`obtenerEstadoCaf()` (para habilitar/deshabilitar el botón en el frontend), y
+`actualizarEstadosPendientes()` (cron).
+
+**Rutas:** `view/dteRoutes.js`, montadas en `/api/dte` con `requireAuth` (`app.js`):
+```
+GET    /api/dte/estado                       → { boleta39, factura33 } CAF cargado o no
+POST   /api/dte/emitir/:id_proyecto          → Emitir DTE (auto-detecta tipo 33/39)
+GET    /api/dte/proyecto/:id_proyecto        → Historial de DTEs del proyecto
+GET    /api/dte/proyecto/:id_proyecto/ultimo → Último documento (para "similar al último")
 ```
 
-`dte_folios_consumidos` es crítico: reutilizar un folio es una violación grave ante el SII —
-antes de emitir, el `dteService.js` debe reservar el folio ahí de forma atómica (transacción)
-antes de firmar, para que dos emisiones concurrentes nunca usen el mismo folio.
+**Cron:** `actualizarEstadosPendientes` cada hora (`app.js`, mismo patrón `setInterval`+`.unref()`
+de los recordatorios existentes) — no hace nada mientras no haya documentos `enviado` pendientes,
+así que es seguro dejarlo corriendo aunque no haya certificado configurado todavía.
 
-**Servicio:** `services/dteService.js` — orquesta: reservar folio → `buildYFirmarDte` →
-`enviarSetDte` (Fase 1C) → guardar en `dte_documentos` → enviar por email (reusa `EmailModal`
-del Cockpit / `sendCockpitEmail`, cambiando el adjunto "borrador" por el XML/PDF real).
+**Nota de anulación (NC/ND):** el endpoint `POST /api/dte/:id/anular` (Nota de Crédito) queda
+fuera de este alcance — `dteXml.js` hoy solo arma Boleta/Factura afecta simple, no Notas de
+Crédito/Débito. Se agrega cuando haga falta anular un documento real.
 
-**Rutas:** `view/dteRoutes.js`
+### 4.3 Fase 3 — Frontend — COMPLETO
+
+- Modal "Emitir Documento Tributario" (Ingresos): el botón "Emitir DTE" ahora llama al endpoint
+  real. Se habilita/deshabilita automáticamente según `GET /api/dte/estado` — hoy aparece
+  deshabilitado porque no hay CAF, y se habilita solo cuando se cargue uno, sin tocar código.
+- Muestra el resultado real (folio + Track ID, o el error del SII) después de emitir.
+- Botón **"Usar los mismos datos que el último documento"** (equivalente a la opción del portal
+  del SII que mostraste) — trae el `detalle_json` del último documento emitido para ese proyecto.
+- El botón "Factura" del Cockpit sigue siendo solo vista previa (PDF + email) — no se conectó al
+  endpoint real todavía, queda para cuando se valide el flujo completo con el Set de Pruebas.
+
+### 4.4 Variables de entorno pendientes (`.env` del backend, VPS)
+
+No configuradas todavía porque no hay certificado ni CAF reales. Cuando lleguen:
+
+```env
+# Certificado digital del representante legal (.pfx), fuera de git — ver .gitignore
+DTE_CERT_PATH=/root/finance/secrets/dte/certificado.pfx
+DTE_CERT_PASS=CONTRASEÑA_DEL_CERTIFICADO
+
+# RUT de la empresa emisora (con guión, sin puntos) — usado por el cron de estado
+DTE_RUT_EMISOR=78184828-K
+
+# Ambiente: certificacion o produccion
+DTE_AMBIENTE=certificacion
 ```
-POST   /api/dte/emitir/:id_proyecto     → Emitir DTE (auto-detecta tipo)
-GET    /api/dte/proyecto/:id_proyecto   → Historial de DTEs de un proyecto
-POST   /api/dte/:id/anular              → Emitir nota de crédito (anulación)
-GET    /api/dte/:id/estado-sii          → Consultar estado en SII
-```
 
-**Cron:** actualizar `estado_sii` de documentos `pendiente` cada hora (mismo patrón `setInterval`
-+ `.unref()` de `app.js` que usan los recordatorios existentes).
-
-### 4.3 Fase 3 — Frontend
-
-La mayor parte de la UI ya existe (Etapa 1). Falta *reemplazar* el flujo de borrador por el real:
-- Conectar el modal "Emitir Documento Tributario" (Ingresos) y el botón "Factura" (Cockpit) al
-  endpoint real `POST /api/dte/emitir/:id_proyecto`, habilitando el botón "Emitir DTE" (hoy
-  deshabilitado con tooltip "Requiere CAF del SII").
-- Badge de estado SII (`Pendiente` / `Aceptado` / `Rechazado`) en cada proyecto.
-- Sección "Documentos Tributarios" en Finance: listado, filtros, descarga, alerta si
-  `rechazado`/`observado`.
+Los archivos CAF (XML) se registran en la tabla `dte_caf` (`ruta_archivo` apunta a
+`/root/finance/secrets/dte/caf/...`, misma carpeta fuera de git) — no hay UI de carga todavía,
+se inserta el registro a mano la primera vez (`INSERT INTO dte_caf (...)`).
 
 ---
 
@@ -349,19 +354,23 @@ listo; falta la Fase 1C para poder ejecutar este procedimiento.
 - [ ] Subir el certificado `.pfx` real al VPS (fuera de git) y probar `pfxToPem` con él
 
 ### Fase 1C — Cliente SOAP SII
-- [ ] `services/dte/siiClient.js`: semilla/token/envío/consulta estado
+- [x] `services/dte/siiClient.js`: semilla/token/envío/consulta estado (construido, no probado)
 - [ ] Probar contra `maullin.sii.cl` con datos sintéticos (antes de gastar folios reales)
 
 ### Fase 2 — Backend
-- [ ] Tablas `dte_documentos` + `dte_folios_consumidos`
-- [ ] `services/dteService.js` (orquestador, con reserva atómica de folio)
-- [ ] `view/dteRoutes.js`
-- [ ] Cron de actualización de estado SII
+- [x] Tablas `dte_documentos` + `dte_folios_consumidos` + `dte_caf` (ya en producción)
+- [x] `services/dteService.js` (orquestador, con reserva atómica de folio)
+- [x] `view/dteRoutes.js` + `controller/DteController.js`, montados con `requireAuth`
+- [x] Cron de actualización de estado SII (cada hora, no-op sin documentos pendientes)
+- [ ] Configurar `DTE_CERT_PATH`/`DTE_CERT_PASS`/`DTE_RUT_EMISOR` en el `.env` del VPS (§4.4)
+- [ ] Cargar el certificado `.pfx` en el VPS, fuera de git
 
 ### Fase 3 — Frontend
-- [ ] Conectar el modal/botón "Emitir Documento" existente al endpoint real
-- [ ] Badge de estado SII en cada proyecto
-- [ ] Sección "Documentos Tributarios" en Finance
+- [x] Conectar el modal "Emitir Documento" (Ingresos) al endpoint real, gateado por `/api/dte/estado`
+- [x] Botón "Usar los mismos datos que el último documento"
+- [ ] Badge de estado SII en cada proyecto (fuera de la tarjeta/modal)
+- [ ] Sección "Documentos Tributarios" en Finance (listado/filtros/descarga)
+- [ ] Conectar el botón "Factura" del Cockpit al endpoint real (hoy solo genera el borrador)
 
 ### Fase 4 — Certificación con el SII
 - [ ] Descargar CAF Tipo 39 (5 folios) — inicia la ventana de 24h
@@ -392,6 +401,7 @@ listo; falta la Fase 1C para poder ejecutar este procedimiento.
 - Formato Boletas Electrónicas SII (v4.00, 2023-06-01): https://www.sii.cl/factura_electronica/factura_mercado/formato_boletas_elec_202306.pdf
 - Instructivo Técnico Factura Electrónica (28/10/2021, TED/firma/webservices): https://www.sii.cl/factura_electronica/factura_mercado/instructivo_emision.pdf
 - Webservices SII: `CrSeed.jws`/`GetTokenFromSeed.jws` en `maullin.sii.cl` (certificación) / `palena.sii.cl` (producción)
+- Manual Desarrollador Externo — Envío Automático DTE (endpoint de upload): http://www.sii.cl/servicios_online/docs/envio.pdf
 - Verificador DTEs SII: https://maullin.sii.cl/cvc/cvc.html
 
 ---

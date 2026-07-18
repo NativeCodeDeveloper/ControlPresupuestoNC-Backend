@@ -55,6 +55,8 @@ import { ejecutarRecordatorioF29 } from "./services/f29ReminderService.js";
 import { ejecutarRecordatoriosCliente } from "./services/clientReminderService.js";
 import calendarioRoutes from "./view/calendarioRoutes.js";
 import { ejecutarRecordatoriosCalendario } from "./services/calendarioReminderService.js";
+import dteRoutes from "./view/dteRoutes.js";
+import { actualizarEstadosPendientes } from "./services/dteService.js";
 
 
 const app = express();
@@ -170,6 +172,7 @@ app.use("/api/workspace", requireAuth, workspaceRoutes);
 app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
 app.use("/api/admin",      requireAuth, adminRoutes);
 app.use("/api/calendario", requireAuth, calendarioRoutes);
+app.use("/api/dte", requireAuth, dteRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)
 app.get("/api/tipos-costos", requireAuth, CatalogosController.obtenerTiposCostosVariables);
 app.post("/api/tipos-costos", requireAuth, CatalogosController.crearTipoCostoVariable);
@@ -292,6 +295,19 @@ httpServer.listen(PORT, () => {
 
     if (typeof calendarioHandle.unref === "function") {
         calendarioHandle.unref();
+    }
+
+    // CRON DTE: actualizar estado SII de documentos "enviado" — cada hora.
+    // No hace nada (retorna temprano) mientras no haya documentos pendientes, así que es
+    // seguro dejarlo corriendo aunque todavía no exista certificado/CAF configurados.
+    const dteHandle = setInterval(() => {
+        actualizarEstadosPendientes().catch((err) => {
+            console.error('[DTE] Error inesperado en cron de estado:', err?.message || err);
+        });
+    }, 60 * 60 * 1000);
+
+    if (typeof dteHandle.unref === "function") {
+        dteHandle.unref();
     }
 
     // CRON CLIENT: desactivado — los avisos al cliente se envían manualmente desde el cockpit
