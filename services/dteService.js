@@ -172,6 +172,25 @@ export async function obtenerUltimoDocumento(idProyecto) {
     return { ...doc, detalle: typeof doc.detalle_json === 'string' ? JSON.parse(doc.detalle_json) : doc.detalle_json };
 }
 
+/** Listado global de documentos emitidos (todos los proyectos) — para la vista de control "Documentos Tributarios". */
+export async function obtenerDocumentosGlobal({ tipoDte, estado, ambiente, limit = 200 } = {}) {
+    const db = DataBase.getInstance();
+    const where = ['activo = 1'];
+    const params = [];
+    if (tipoDte) { where.push('tipo_dte = ?'); params.push(tipoDte); }
+    if (estado) { where.push('estado_sii = ?'); params.push(estado); }
+    if (ambiente) { where.push('ambiente = ?'); params.push(ambiente); }
+    params.push(Math.min(Number(limit) || 200, 500));
+
+    return db.ejecutarQuery(
+        `SELECT id, id_proyecto, id_pago, tipo_dte, folio, ambiente, track_id, estado_sii,
+                monto_neto, monto_iva, monto_exento, monto_total, receptor_rut, receptor_nombre,
+                error_mensaje, emitido_por, emitido_en
+         FROM dte_documentos WHERE ${where.join(' AND ')} ORDER BY emitido_en DESC LIMIT ?`,
+        params
+    );
+}
+
 /** Historial de documentos de un proyecto. */
 export async function obtenerHistorialProyecto(idProyecto) {
     const db = DataBase.getInstance();

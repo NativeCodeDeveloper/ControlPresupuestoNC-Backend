@@ -105,4 +105,32 @@ export default class DteController {
             return res.status(500).json({ message: 'Error al consultar el estado del CAF' });
         }
     }
+
+    /** GET /api/dte/documentos — listado global (todos los proyectos), para la vista de control. */
+    static async listado(req, res) {
+        try {
+            const { tipoDte, estado, ambiente, limit } = req.query;
+            const documentos = await dteService.obtenerDocumentosGlobal({
+                tipoDte: tipoDte ? Number(tipoDte) : undefined,
+                estado: estado || undefined,
+                ambiente: ambiente || undefined,
+                limit: limit ? Number(limit) : undefined,
+            });
+            return res.json(documentos);
+        } catch (error) {
+            console.error('[DteController.listado]', error);
+            return res.status(500).json({ message: 'Error al obtener el listado de documentos' });
+        }
+    }
+
+    /** POST /api/dte/documentos/actualizar-estados — consulta al SII el estado de los documentos "enviado" ahora mismo (sin esperar el cron horario). */
+    static async actualizarEstados(req, res) {
+        try {
+            const resultado = await dteService.actualizarEstadosPendientes(AMBIENTE);
+            return res.json(resultado);
+        } catch (error) {
+            console.error('[DteController.actualizarEstados]', error);
+            return res.status(500).json({ message: 'Error al actualizar estados', detalle: error.message });
+        }
+    }
 }
