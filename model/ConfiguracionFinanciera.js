@@ -90,6 +90,43 @@ export default class ConfiguracionFinanciera {
         }
     }
 
+    async updateEmisorConfig(emisor) {
+        const conexion = DataBase.getInstance();
+        try {
+            const idColumn = await this.getIdColumn();
+            const camposEmisor = [
+                "emisor_rut", "emisor_razon_social", "emisor_giro",
+                "emisor_direccion", "emisor_comuna", "emisor_actividad_economica"
+            ];
+
+            const colsPresentes = [];
+            const valsPresentes = [];
+            for (const campo of camposEmisor) {
+                if (await this._hasColumn(conexion, campo)) {
+                    colsPresentes.push(campo);
+                    valsPresentes.push(emisor?.[campo] ?? null);
+                }
+            }
+
+            if (colsPresentes.length === 0) {
+                return { affectedRows: 0 };
+            }
+
+            const idCol = idColumn === "id_configuracion_financiera" ? "id_configuracion_financiera" : "id";
+            const cols = [idCol, ...colsPresentes];
+            const vals = [1, ...valsPresentes];
+            const updates = colsPresentes.map((c) => `${c} = VALUES(${c})`).join(", ");
+            const placeholders = vals.map(() => "?").join(", ");
+
+            const query = `INSERT INTO configuracion_financiera (${cols.join(", ")}) VALUES (${placeholders})
+                         ON DUPLICATE KEY UPDATE ${updates}`;
+
+            return await conexion.ejecutarQuery(query, vals);
+        } catch (error) {
+            throw new Error('Error al actualizar datos del emisor');
+        }
+    }
+
     async _hasColumn(conexion, columnName) {
         const rows = await conexion.ejecutarQuery(
             `SELECT COLUMN_NAME FROM information_schema.COLUMNS

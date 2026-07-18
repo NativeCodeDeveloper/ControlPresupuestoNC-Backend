@@ -175,7 +175,7 @@ export default class Proyectos {
     }
 
     // CREAR NUEVO PROYECTO
-    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago, afecto_iva = 1) {
+    async insertProyecto(codigo_interno, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_creacion, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago, afecto_iva = 1, direccion_cliente = null, comuna_cliente = null) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
@@ -211,6 +211,18 @@ export default class Proyectos {
                 vals.push(afecto_iva ? 1 : 0);
             }
 
+            const hasDireccionCliente = await hasProyectosColumn(conexion, "direccion_cliente");
+            if (hasDireccionCliente) {
+                cols.push("direccion_cliente");
+                vals.push(direccion_cliente || null);
+            }
+
+            const hasComunaCliente = await hasProyectosColumn(conexion, "comuna_cliente");
+            if (hasComunaCliente) {
+                cols.push("comuna_cliente");
+                vals.push(comuna_cliente || null);
+            }
+
             if (hasActivo) {
                 cols.push("activo");
                 vals.push(1);
@@ -225,7 +237,7 @@ export default class Proyectos {
     }
 
     // ACTUALIZAR PROYECTO
-    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago, afecto_iva = 1) {
+    async updateProyecto(id, nombre, tipo_proyecto_id, estado_proyecto_id, nombre_cliente, rut_cliente, email_cliente, telefono_cliente, profesion_cliente, monto_acordado, fecha_entrega, observaciones, ciclo_facturacion, fecha_inicio_servicio, fecha_proximo_pago, url_cobro_mercadopago, afecto_iva = 1, direccion_cliente = null, comuna_cliente = null) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
@@ -233,6 +245,8 @@ export default class Proyectos {
             const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
             const hasUrlCobro = await hasProyectosColumn(conexion, "url_cobro_mercadopago");
             const hasAfectoIva = await hasProyectosColumn(conexion, "afecto_iva");
+            const hasDireccionCliente = await hasProyectosColumn(conexion, "direccion_cliente");
+            const hasComunaCliente = await hasProyectosColumn(conexion, "comuna_cliente");
             const idColumn = await getProyectoIdColumn(conexion);
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
@@ -270,6 +284,16 @@ export default class Proyectos {
             if (hasAfectoIva) {
                 setParts.push("afecto_iva = ?");
                 param.push(afecto_iva ? 1 : 0);
+            }
+
+            if (hasDireccionCliente) {
+                setParts.push("direccion_cliente = ?");
+                param.push(direccion_cliente ?? null);
+            }
+
+            if (hasComunaCliente) {
+                setParts.push("comuna_cliente = ?");
+                param.push(comuna_cliente ?? null);
             }
 
             param.push(id);

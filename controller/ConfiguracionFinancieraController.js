@@ -72,4 +72,46 @@ export default class ConfiguracionFinancieraController {
             return res.status(500).json({ message: "Error al actualizar configuración financiera" });
         }
     }
+
+    /**
+     * actualizarEmisor - Actualiza los datos de la empresa emisora usados como
+     * encabezado de los documentos tributarios (facturas/boletas).
+     * Ruta: PUT /api/config/financiera/emisor
+     * Body: {
+     *   emisor_rut (requerido), emisor_razon_social (requerido),
+     *   emisor_giro, emisor_direccion, emisor_comuna, emisor_actividad_economica
+     * }
+     */
+    static async actualizarEmisor(req, res) {
+        try {
+            const {
+                emisor_rut,
+                emisor_razon_social,
+                emisor_giro,
+                emisor_direccion,
+                emisor_comuna,
+                emisor_actividad_economica
+            } = req.body;
+
+            if (!emisor_rut || !emisor_razon_social) {
+                return res.status(400).json({ message: "Faltan datos requeridos (RUT y razón social del emisor)" });
+            }
+
+            const config = new ConfiguracionFinanciera();
+            const resultado = await config.updateEmisorConfig({
+                emisor_rut,
+                emisor_razon_social,
+                emisor_giro,
+                emisor_direccion,
+                emisor_comuna,
+                emisor_actividad_economica
+            });
+
+            const data = await config.selectConfig();
+            return res.json({ ok: true, resultado, data });
+        } catch (error) {
+            console.error("[ConfiguracionFinancieraController.actualizarEmisor]", error);
+            return res.status(500).json({ message: "Error al actualizar datos del emisor" });
+        }
+    }
 }

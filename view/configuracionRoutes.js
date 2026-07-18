@@ -8,4 +8,7 @@ router.get('/', ConfiguracionFinancieraController.obtenerConfiguracion);
 // PUT - Actualizar configuración financiera
 router.put('/', ConfiguracionFinancieraController.actualizarConfiguracion);
 
+// PUT - Actualizar datos del emisor (para documentos tributarios)
+router.put('/emisor', ConfiguracionFinancieraController.actualizarEmisor);
+
 export default router;
