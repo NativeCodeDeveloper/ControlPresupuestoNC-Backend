@@ -384,14 +384,58 @@ agotados**, ninguno con aceptación final:
 
 Con 7 bugs reales de código encontrados y arreglados, la firma verificada criptográficamente
 válida en repetidas pruebas locales contra el certificado real, y la subida aceptada dos veces —
-el rechazo final "Error en Firma" **ya no parece ser un bug de código alcanzable por este medio**.
-**Siguiente paso recomendado**: contactar la Mesa de Ayuda del SII directamente (+56 2 2395 1115)
-con los Track ID `0253167552` y `0253167868`, pidiendo que confirmen desde su lado (con
-visibilidad de logs de servidor que no tenemos) si el certificado de Nicolás Machuca está
-correctamente autorizado/registrado para firmar DTE en nombre de NATIVECODE SPA. **Se necesita un
-CAF nuevo de Factura** (los 5 folios actuales ya se usaron) para seguir probando después de tener
-esa respuesta — no pedirlo hasta tener una hipótesis nueva y concreta que probar, dada la ventana
-de 24h por CAF.
+el rechazo final "Error en Firma" ya no parecía un bug de código alcanzable por verificación
+offline. Se mandó un mensaje a Mesa de Ayuda del SII con los Track ID `0253167552`/`0253167868`
+(ver `~/Desktop/mensaje_mesa_ayuda_sii_dte.txt`), pero **se resolvió por investigación propia antes
+de tener respuesta**, con 2 bugs reales más — ninguno era el certificado ni Acepta.com:
+
+**Bug real #8 (2026-07-19) — usuario no registrado en el sistema de Facturación de **Mercado**:**
+consultando directamente `QueryEstUp.jws` con el Track ID `0253167972` (folio de un CAF nuevo, ya
+con la Resolución del bug #7 corregida) se obtuvo `ESTADO=106, GLOSA="Usuario sin permiso de
+envio"` — un código que ni siquiera aparece en el manual oficial de 2004 de este servicio. Marcar
+el RUT del certificado (19169587-9) en "Sistema de facturación **gratuito**" → "Mantención de
+usuarios autorizados" no tuvo efecto (ese es un sistema distinto). La corrección real: **Servicios
+Online → Factura electrónica → Menú Postulantes → Ambiente Certificación y Prueba →
+"Actualización de Datos de empresa autorizada" → Mantención de usuarios** (sistema de
+**Facturación de Mercado**, el que usa nuestro motor vía DTEWS) — ahí había que agregar/marcar el
+RUT del certificado con los 4 permisos (Usuario Administrador, Firmar Documentos, **Enviar
+Documentos**, Registro). Tras esto, el mismo tipo de consulta pasó de `106` a `RFR` (código
+oficial) — confirmando que el permiso era real, pero quedaba el síntoma original.
+
+**Bug real #9 (2026-07-19) — encoding declarado (ISO-8859-1) vs bytes realmente enviados
+(UTF-8):** el sobre `<EnvioDTE>` declara `<?xml ... encoding="ISO-8859-1"?>`, pero
+`siiClient.enviarSetDte` armaba el archivo con `new Blob([envioXmlFirmado])`, que **siempre**
+codifica un string JS como UTF-8, sin importar el prólogo. Cualquier tilde/ñ en los datos (y
+`emisor_comuna` de NATIVECODE SPA es literalmente `"ÑIQUÉN"`, además del detalle de prueba
+"Cajón") queda mal decodificada por el SII si honra el encoding declarado ("Cajón" → "CajÃ³n"),
+lo que corrompe el contenido que ve su lado y hace que su digest recalculado nunca coincida con
+el nuestro — **esto explica el "Rechazado por Error en Firma" en absolutamente todos los intentos
+anteriores**, ninguno de los cuales usó datos 100% ASCII. Arreglado en `siiClient.js`
+(`xmlComoBytesIso88591()`, nueva función expuesta y con regresión en `verify.js` §10): se convierte
+el string a un `Buffer` con encoding `'latin1'` real antes de envolverlo en el `Blob`, en vez de
+dejar que `Blob` decida. **Confirmado con el folio #5 (el último del CAF), 2026-07-19: el estado
+pasó de `RFR` a `RCT` ("Rechazado por Error en Carátula")** — un código totalmente distinto,
+prueba de que la firma ya no es la causa del rechazo.
+
+**Bug real #10 (2026-07-19) — `NroResol` debe ser 0 en Certificación, no la Resolución real:** el
+"arreglo" del bug #7 (usar la Resolución N°99/2014 real de NATIVECODE SPA en vez de 0) era
+**incorrecto para el ambiente de Certificación** — confirmado textualmente en el manual oficial del
+SII ("MANUAL PARA EMPRESAS USUARIAS AMBIENTE DE CERTIFICACIÓN FACTURA ELECTRONICA"): *"Numero
+Resolución: 0 (**Valor fijo en Ambiente de Certificación**)"*. La Resolución real de producción
+todavía no aplica durante la certificación — el SII recién la reconoce cuando el postulante
+aprueba todas las pruebas y declara cumplimiento. Esto es casi con certeza la causa del nuevo
+`RCT`. **Arreglado** en `dteService.js`: `NroResol=0`/`FchResol=caf.fechaAutorizacion` siempre que
+`ambiente==='certificacion'`; la Resolución real (`DTE_NRO_RESOLUCION`/`DTE_FCH_RESOLUCION`) solo
+se usa si `ambiente==='produccion'`. **Sin probar contra el SII real todavía** — los 5 folios del
+CAF de Factura están agotados; hace falta un CAF nuevo para confirmar.
+
+**Estado al 2026-07-19, fin de esta ronda de pruebas:** con los bugs #8 y #9 confirmados en vivo
+(evidencia dura: el estado real cambió de código en cada fix, `106 → RFR → RCT`, nunca fue una
+suposición), y el bug #10 respaldado por una cita textual del manual oficial (pendiente de
+confirmación real). **Siguiente paso**: pedir un CAF nuevo de Factura (33) y probar el fix del bug
+#10 — con alta confianza de que sea el último bloqueador, dado que cada corrección real hasta
+ahora ha cambiado el código de rechazo a uno más profundo en el pipeline de validación del SII
+(firma → carátula), nunca ha vuelto a un código anterior.
 
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 

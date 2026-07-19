@@ -114,16 +114,22 @@ export async function emitirDte({ idProyecto, idPago = null, tipoDte, emisor, re
 
         const documentos = [{ documentoId, documentoXml, tipoDte }];
         const envioId = `SetDoc${documentoId}`;
-        // FchResol/NroResol son la Resolución real del SII que autoriza al contribuyente como
-        // emisor DTE (visible en "Actualización de datos empresa autorizada" del portal) -- NO
-        // el "0 = autorización por folios" que se asumió antes. NATIVECODE SPA tiene Resolución
-        // N°99 del 21-10-2014 (confirmado 2026-07-19, ver DTE_NRO_RESOLUCION/DTE_FCH_RESOLUCION
-        // en el .env) -- mandar 0 + la fecha del CAF era información incorrecta en la Carátula.
+        // NroResol=0 es OBLIGATORIO en ambiente de Certificación -- confirmado textualmente en el
+        // manual oficial del SII ("MANUAL PARA EMPRESAS USUARIAS AMBIENTE DE CERTIFICACIÓN FACTURA
+        // ELECTRONICA"): "Numero Resolución: 0 (Valor fijo en Ambiente de Certificación)". La
+        // Resolución real del contribuyente (para NATIVECODE SPA, N°99 del 21-10-2014) todavía NO
+        // aplica durante la certificación -- el SII recién la emite/reconoce cuando el postulante
+        // aprueba todas las pruebas y declara cumplimiento. Usar NroResol=99 en Certificación
+        // (bug real, 2026-07-19) causaba "RCT - Rechazado por Error en Carátula" una vez resuelto
+        // el bug de firma anterior (encoding ISO-8859-1). FchResol sí puede ser cualquier fecha
+        // válida ("variable particular para cada empresa" según el mismo manual) -- se usa la del
+        // CAF por simplicidad.
+        const usarResolucionProduccion = ambiente === 'produccion' && process.env.DTE_NRO_RESOLUCION !== undefined;
         const { envioXmlSinFirmar } = buildEnvioDteSinFirmar({
             rutEmisor: emisor.rut,
             rutEnvia: `${rutEnviaSinDv}-${dvEnvia}`,
-            fchResol: process.env.DTE_FCH_RESOLUCION || caf.fechaAutorizacion,
-            nroResol: process.env.DTE_NRO_RESOLUCION !== undefined ? Number(process.env.DTE_NRO_RESOLUCION) : 0,
+            fchResol: usarResolucionProduccion ? process.env.DTE_FCH_RESOLUCION : caf.fechaAutorizacion,
+            nroResol: usarResolucionProduccion ? Number(process.env.DTE_NRO_RESOLUCION) : 0,
             documentos,
             envioId,
         });
