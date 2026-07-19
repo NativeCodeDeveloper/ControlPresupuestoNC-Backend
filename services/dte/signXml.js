@@ -103,14 +103,20 @@ export function signDocumento(xmlString, pemData, referenceId) {
         },
     });
 
-    // Solo el transform enveloped-signature -- confirmado contra el validador de schema real del
-    // SII (2026-07-19): con [ENVELOPED, C14N] rechazaba "Invalid content was found starting with
-    // element 'Transform'. No child element is expected at this point" (Transforms del SII solo
-    // admite un elemento). No tocar signWholeDocument (semilla) -- esa firma ya está confirmada
-    // funcionando contra el SII real con ambos transforms, es un endpoint/schema distinto.
+    // El único Transform declarado debe ser C14N, NO enveloped-signature -- confirmado contra el
+    // "DTE de ejemplo" oficial del SII (manual_certificacion.pdf, Anexo 5.1): en ese ejemplo
+    // <Signature> va como HERMANO de <Documento> (dentro de <DTE>, pero fuera de él) -- igual que
+    // ya lo arma este código -- así que el contenido referenciado nunca contiene la firma y no
+    // hace falta "envelope-strip" (enveloped-signature). Usar enveloped-signature aquí no aplica
+    // realmente (no hay nada que remover) y además NO canonicaliza de verdad -- xml-crypto solo
+    // aplica canonicalización real cuando el transform declarado es un algoritmo de
+    // canonicalización (C14N/EXC-C14N), no con enveloped-signature -- causaba digests que nunca
+    // coincidían con la verificación real del SII ("Rechazado por Error en Firma", 2026-07-19).
+    // El schema del SII exige igualmente un único <Transform> (confirmado con el validador real),
+    // que coincide exactamente con lo que pide el ejemplo oficial: un solo Transform, C14N.
     sig.addReference({
         xpath: `//*[@ID='${referenceId}']`,
-        transforms: [ENVELOPED],
+        transforms: [C14N],
         digestAlgorithm: SHA1,
     });
 

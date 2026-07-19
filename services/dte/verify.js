@@ -201,8 +201,17 @@ console.log('\n[4] Firma XMLDSig del DTE completo (round-trip, certificado autof
     check('signDocumento() inserta un elemento <Signature>', signedXml.includes('<Signature'));
 
     const transformCount = (signedXml.match(/<Transform /g) || []).length;
-    check('signDocumento() usa un único <Transform> (enveloped-signature) por Reference',
+    check('signDocumento() usa un único <Transform> por Reference',
         transformCount === 1, `se encontraron ${transformCount} — el schema del SII rechaza más de uno (confirmado 2026-07-19)`);
+    // El transform debe ser C14N, NO enveloped-signature -- confirmado contra el "DTE de ejemplo"
+    // oficial del SII (manual_certificacion.pdf Anexo 5.1): ahí <Signature> va como hermano de
+    // <Documento> (no anidado), así que nunca hace falta "envelope-strip" -- solo canonicalizar
+    // de verdad. Usar enveloped-signature aquí no canonicaliza (xml-crypto solo canonicaliza si
+    // el transform declarado es un algoritmo de C14N/EXC-C14N), causando digests que nunca
+    // coinciden con la verificación real del SII ("Rechazado por Error en Firma", 2026-07-19).
+    check('el Transform declarado es C14N (no enveloped-signature)',
+        signedXml.includes('<Transform Algorithm="http://www.w3.org/TR/2001/REC-xml-c14n-20010315"') &&
+        !signedXml.includes('enveloped-signature'));
 
     const verifier = new SignedXml({ publicCert: pemData.certPem });
     let isValid = false;
