@@ -39,7 +39,7 @@ import { pfxToPem, signDocumento } from './signXml.js';
 import { buildDte, buildYFirmarDte, computeMontosBoleta, computeMontosFactura } from './dteXml.js';
 import { buildCaratula, buildEnvioDteSinFirmar, firmarEnvioDteEnSitio } from './envioDte.js';
 import { generarTimbrePdf417 } from './pdf417.js';
-import { parseUploadResponse } from './siiClient.js';
+import { parseUploadResponse, xmlComoBytesIso88591 } from './siiClient.js';
 
 // Genera un certificado autofirmado + llave, empaquetado como .pfx en memoria, para probar los
 // flujos de firma sin depender del certificado real del usuario.
@@ -539,6 +539,44 @@ console.log('\n[9] Regresión — sobre EnvioDTE: FchResol obligatorio, TpoDTE, 
         }
     }
     check('ambas firmas (Documento y SetDTE) son criptográficamente válidas con xsi:schemaLocation presente', ambasValidas);
+}
+
+// ── 10. Regresión — bug real: encoding ISO-8859-1 declarado vs bytes UTF-8 enviados
+//         (2026-07-19). El prólogo del sobre declara ISO-8859-1, pero `new Blob([string])`
+//         codifica cualquier string JS como UTF-8 sin importar el prólogo -- con tildes/ñ
+//         (inevitables en datos reales chilenos: comunas, giros, nombres) el SII decodificaba
+//         esos bytes como si fueran ISO-8859-1 y obtenía texto corrupto, lo que invalidaba la
+//         firma en su lado aunque la firma fuera perfecta sobre el contenido real. Confirmado con
+//         el emisor real de NATIVECODE SPA (`emisor_comuna = "ÑIQUÉN"`, tilde + ñ) y con el
+//         detalle de prueba del SET BASICO ("Cajón").
+console.log('\n[10] Regresión — bytes ISO-8859-1 reales al enviar (bug real: tildes/ñ corrompidas por Blob=UTF-8, 2026-07-19)');
+{
+    const textoConTildes = 'Cajón, Peñalolén, Diseño, ÑIQUÉN';
+    const bytes = xmlComoBytesIso88591(textoConTildes);
+
+    check(
+        'los bytes producidos son ISO-8859-1 real (1 byte por carácter), no UTF-8',
+        bytes.length === textoConTildes.length,
+        `esperado ${textoConTildes.length} bytes, se obtuvieron ${bytes.length}`
+    );
+    check(
+        'decodificar esos bytes como latin1 recupera el texto original exacto',
+        bytes.toString('latin1') === textoConTildes
+    );
+
+    const bytesUtf8DeReferencia = Buffer.from(textoConTildes, 'utf8');
+    check(
+        'la codificación UTF-8 (el bug) habría producido más bytes que caracteres -- confirma que el bug era real',
+        bytesUtf8DeReferencia.length > textoConTildes.length
+    );
+
+    let lanzaConCaracterFueraDeRango = false;
+    try {
+        xmlComoBytesIso88591('emoji fuera de rango: \u{1F600}');
+    } catch {
+        lanzaConCaracterFueraDeRango = true;
+    }
+    check('lanza error explícito si el XML tiene un carácter fuera del rango ISO-8859-1 (en vez de truncarlo en silencio)', lanzaConCaracterFueraDeRango);
 }
 
 console.log(`\n${failed === 0 ? '✅ Todas las verificaciones pasaron.' : `❌ ${failed} verificación(es) fallaron.`}\n`);

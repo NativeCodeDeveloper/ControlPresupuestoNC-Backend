@@ -140,6 +140,26 @@ export function parseUploadResponse(text) {
 }
 
 /**
+ * Convierte el XML (string JS) a los bytes ISO-8859-1 reales que declara su propio prólogo
+ * (`<?xml ... encoding="ISO-8859-1"?>`). `Buffer.from(str, 'latin1')` toma el byte bajo de cada
+ * unidad UTF-16 -- válido solo si todos los caracteres están en el rango Latin-1 (0x00-0xFF, que
+ * cubre tildes/ñ del español); cualquier carácter fuera de ese rango se truncaría en silencio, así
+ * que se valida explícitamente antes de convertir.
+ * @param {string} xmlString
+ * @returns {Buffer}
+ */
+export function xmlComoBytesIso88591(xmlString) {
+    for (let i = 0; i < xmlString.length; i++) {
+        if (xmlString.charCodeAt(i) > 0xff) {
+            throw new Error(
+                `El XML contiene un carácter fuera del rango ISO-8859-1 (código ${xmlString.charCodeAt(i)}, posición ${i}) — no se puede enviar con el encoding declarado en el prólogo.`
+            );
+        }
+    }
+    return Buffer.from(xmlString, 'latin1');
+}
+
+/**
  * Envía un sobre EnvioDTE ya firmado al SII vía upload (multipart/form-data).
  * Referencia: Manual Desarrollador Externo — Envío Automático DTE (OI2003_UPDTE_MDE), Cap. 2.
  * @param {Object} params
@@ -161,7 +181,15 @@ export async function enviarSetDte({ envioXmlFirmado, rutEnvia, dvEnvia, rutComp
     form.append('dvSender', dvEnvia);
     form.append('rutCompany', rutCompania);
     form.append('dvCompany', dvCompania);
-    form.append('archivo', new Blob([envioXmlFirmado], { type: 'text/xml' }), 'EnvioDTE.xml');
+    // El sobre declara `<?xml ... encoding="ISO-8859-1"?>` (Anexo 3.3.1) -- pero `new
+    // Blob([string])` codifica cualquier string JS como UTF-8 sin importar lo que diga el
+    // prólogo. Si el contenido tiene tildes/ñ (nombres, giros, comunas chilenas -- inevitable en
+    // datos reales), el SII decodifica esos bytes UTF-8 como si fueran ISO-8859-1 y obtiene texto
+    // corrupto ("Cajón" -> "CajÃ³n"), lo que hace que su digest recalculado nunca coincida con el
+    // que firmamos -- causaba "Rechazado por Error en Firma" pese a que la firma es válida sobre
+    // el contenido real (confirmado 2026-07-19). Hay que convertir explícitamente a bytes
+    // ISO-8859-1 antes de enviar, para que coincidan con el encoding declarado.
+    form.append('archivo', new Blob([xmlComoBytesIso88591(envioXmlFirmado)], { type: 'text/xml' }), 'EnvioDTE.xml');
 
     const res = await fetch(url, {
         method: 'POST',
