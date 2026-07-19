@@ -36,8 +36,8 @@ import { DOMParser } from '@xmldom/xmldom';
 import xpath from 'xpath';
 import { canonicalizeSiiTed, buildTedDatos, signTed, verifyTed, escapeTedText } from './ted.js';
 import { pfxToPem, signDocumento } from './signXml.js';
-import { buildYFirmarDte, computeMontosBoleta, computeMontosFactura } from './dteXml.js';
-import { buildCaratula, buildYFirmarEnvioDte } from './envioDte.js';
+import { buildDte, buildYFirmarDte, computeMontosBoleta, computeMontosFactura } from './dteXml.js';
+import { buildCaratula, buildEnvioDteSinFirmar, firmarEnvioDteEnSitio } from './envioDte.js';
 import { generarTimbrePdf417 } from './pdf417.js';
 import { parseUploadResponse } from './siiClient.js';
 
@@ -228,34 +228,24 @@ console.log('\n[4] Firma XMLDSig del DTE completo (round-trip, certificado autof
     }
     check('la firma XMLDSig es válida contra el certificado (xml-crypto.checkSignature)', isValid);
 
-    // Regresión — 2 bugs reales de firma encontrados contra el SII real (2026-07-19, Factura
-    // caso 1, folio real consumido, "Rechazado por Error en Firma"):
-    // a) si el elemento referenciado por la firma (aquí <Documento>) HEREDA el namespace de un
-    //    ancestro en vez de declararlo él mismo, el digest calculado al firmar no coincide con el
-    //    recalculado al verificar -- pasa igual con C14N normal o exclusivo, el problema es la
-    //    herencia, no el algoritmo. Arreglado declarando xmlns directamente en <Documento> y en
-    //    <SetDTE> (envioDte.js).
-    // b) un namespace adicional no usado en el ancestro (`xmlns:xsi`/`xsi:schemaLocation` en
-    //    <EnvioDTE>) también rompe el digest del <SetDTE> firmado que contiene -- ni la
-    //    canonicalización exclusiva lo resuelve con xml-crypto. Arreglado quitando esos atributos
-    //    de <EnvioDTE> (son solo un hint opcional, no necesarios para que el SII procese el sobre).
-    // Este test simula la reinserción dentro de <EnvioDTE> para que no se repita sin red ni CAF real.
-    const signedXmlSinProlog = signedXml.replace(/^\s*<\?xml[^>]*\?>\s*/, '');
-    const envuelto = `<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><SetDTE xmlns="http://www.sii.cl/SiiDte" ID="SetDocTest">${signedXmlSinProlog}</SetDTE></EnvioDTE>`;
-    let esValidoReinsertado = false;
-    try {
-        const docEnvuelto = new DOMParser().parseFromString(envuelto, 'text/xml');
-        const signatureNodeEnvuelto = xpath.select(
-            "//*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']",
-            docEnvuelto
-        )[0];
-        const verifierEnvuelto = new SignedXml({ publicCert: pemData.certPem });
-        verifierEnvuelto.loadSignature(signatureNodeEnvuelto);
-        esValidoReinsertado = verifierEnvuelto.checkSignature(envuelto);
-    } catch (e) {
-        console.log(`    (error verificando reinsertado: ${e.message})`);
-    }
-    check('la firma sigue siendo válida al reinsertar el documento en otro contexto XML (namespaces adicionales)', esValidoReinsertado);
+    // NOTA — bug real de firma encontrado contra el SII real (2026-07-19, Factura caso 1, 3
+    // folios reales consumidos antes de encontrar la causa completa): "Rechazado por Error en
+    // Firma". Causas encontradas, en orden:
+    // 1) el Transform declarado era enveloped-signature en vez de C14N -- xml-crypto solo
+    //    canonicaliza de verdad cuando el Transform es un algoritmo de canonicalización, así que
+    //    el digest se calculaba sobre una serialización cruda del DOM. Arreglado (ver arriba).
+    // 2) incluso con el Transform correcto, REINSERTAR un documento ya firmado dentro de un
+    //    <EnvioDTE> que agrega un namespace nuevo (`xmlns:xsi`/`xsi:schemaLocation`, que el SII
+    //    exige -- STATUS 7 "Invalid Schema Name" sin él) invalida tanto el digest de la
+    //    Referencia como el propio <SignedInfo>, con C14N normal o exclusivo: no hay forma de
+    //    firmar aislado y reinsertar después de forma segura si el contexto final agrega
+    //    namespaces. La solución real fue dejar de reinsertar: `buildDte()` arma el Documento SIN
+    //    firmar, `buildEnvioDteSinFirmar()` ensambla el sobre completo (con xsi:schemaLocation ya
+    //    puesto) sin firmar nada, y `firmarEnvioDteEnSitio()` firma Documento y SetDTE ya en su
+    //    posición final -- ver §9 para la verificación criptográfica real de este flujo, que es
+    //    el que usa producción (dteService.js). `buildYFirmarDte()` (probado arriba) sigue
+    //    firmando standalone para uso aislado, pero **no debe reinsertarse** en otro documento
+    //    después de firmado -- por diseño, no es un caso soportado.
 }
 
 // ── 5. Pipeline completo con el CASO-1 real del Set de Pruebas del SII ──
@@ -493,6 +483,9 @@ console.log('\n[9] Regresión — sobre EnvioDTE: FchResol obligatorio, TpoDTE, 
 
     const pemData = generarPfxDePrueba();
     const cafSintetico = generarCafDePrueba({ tipoDte: 39 });
+
+    // buildYFirmarDte (standalone) sigue funcionando igual que antes -- envuelve buildDte() en su
+    // propio <DTE> y firma de inmediato, para uso aislado/pruebas (no para meter en un EnvioDTE).
     const { dteXmlFirmado } = buildYFirmarDte({
         tipoDte: 39, folio: 1, fechaEmision: '2026-07-18',
         emisor: { rut: cafSintetico.rutEmisor, razonSocial: 'NATIVECODE SPA' },
@@ -500,14 +493,52 @@ console.log('\n[9] Regresión — sobre EnvioDTE: FchResol obligatorio, TpoDTE, 
         detalle: [{ nombre: 'Cambio de aceite', cantidad: 1, precioUnitario: 19900 }],
         caf: cafSintetico, pemData,
     });
-    check('cada DTE individual sigue trayendo su propio <?xml?> (para uso standalone)', /^<\?xml/.test(dteXmlFirmado));
+    check('cada DTE standalone sigue trayendo su propio <?xml?>', /^<\?xml/.test(dteXmlFirmado));
 
-    const envioFirmado = buildYFirmarEnvioDte(caratula, [dteXmlFirmado], pemData, 'SetDocTest9');
+    // Flujo real usado por dteService.js: buildDte (sin firmar) + buildEnvioDteSinFirmar +
+    // firmarEnvioDteEnSitio -- firma Documento y SetDTE ya ensamblados en su posición final,
+    // con xsi:schemaLocation y el resto de <EnvioDTE> ya puestos.
+    const { documentoId, documentoXml } = buildDte({
+        tipoDte: 33, folio: 1, fechaEmision: '2026-07-18',
+        emisor: { rut: '78184828-K', razonSocial: 'NATIVECODE SPA' },
+        receptor: { rut: '11111111-1', nombre: 'Cliente de Prueba' },
+        detalle: [{ nombre: 'Servicio', cantidad: 1, precioUnitario: 1000 }],
+        caf: generarCafDePrueba({ tipoDte: 33 }),
+    });
+    const documentos = [{ documentoId, documentoXml, tipoDte: 33 }];
+    const envioId = 'SetDocTest9';
+    const { envioXmlSinFirmar } = buildEnvioDteSinFirmar({
+        rutEmisor: '78184828-K', rutEnvia: '19169587-9', fchResol: '2026-07-18', documentos, envioId,
+    });
+    check('el sobre sin firmar incluye xsi:schemaLocation', envioXmlSinFirmar.includes('xsi:schemaLocation'));
+
+    const envioFirmado = firmarEnvioDteEnSitio(envioXmlSinFirmar, documentos, envioId, pemData);
     const declaracionesXml = (envioFirmado.match(/<\?xml/g) || []).length;
-    check('el sobre EnvioDTE tiene un único <?xml?> (no queda anidado el del DTE individual)', declaracionesXml === 1,
-        `se encontraron ${declaracionesXml}`);
-    check('el sobre EnvioDTE arma y firma sin error (contiene <Signature> y <SetDTE>)',
-        envioFirmado.includes('<Signature') && envioFirmado.includes('<SetDTE'));
+    check('el sobre EnvioDTE tiene un único <?xml?>', declaracionesXml === 1, `se encontraron ${declaracionesXml}`);
+
+    const signatureCount = (envioFirmado.match(/<Signature xmlns/g) || []).length;
+    check('el sobre tiene 2 firmas (Documento y SetDTE)', signatureCount === 2, `se encontraron ${signatureCount}`);
+
+    // Verificación criptográfica real de AMBAS firmas -- esto es lo que de verdad importa: no
+    // solo que el XML se arme sin excepciones, sino que las firmas sean válidas incluso con
+    // xsi:schemaLocation presente en <EnvioDTE> (bug real que costó 3 folios de Factura en
+    // producción antes de encontrar la causa: firmar antes de ensamblar el sobre invalida la
+    // firma en cuanto el ancestro agrega un namespace nuevo, 2026-07-19).
+    const doc = new DOMParser().parseFromString(envioFirmado, 'text/xml');
+    const signatureNodes = xpath.select("//*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']", doc);
+    let ambasValidas = signatureNodes.length === 2;
+    if (ambasValidas) {
+        for (const node of signatureNodes) {
+            try {
+                const verifier = new SignedXml({ publicCert: pemData.certPem });
+                verifier.loadSignature(node);
+                if (!verifier.checkSignature(envioFirmado)) ambasValidas = false;
+            } catch {
+                ambasValidas = false;
+            }
+        }
+    }
+    check('ambas firmas (Documento y SetDTE) son criptográficamente válidas con xsi:schemaLocation presente', ambasValidas);
 }
 
 console.log(`\n${failed === 0 ? '✅ Todas las verificaciones pasaron.' : `❌ ${failed} verificación(es) fallaron.`}\n`);

@@ -2,8 +2,8 @@ import fs from 'fs';
 import DataBase from '../config/Database.js';
 import { parseCaf } from './dte/ted.js';
 import { pfxToPem, extraerRutCertificado } from './dte/signXml.js';
-import { buildYFirmarDte } from './dte/dteXml.js';
-import { buildCaratula, buildYFirmarEnvioDte } from './dte/envioDte.js';
+import { buildDte } from './dte/dteXml.js';
+import { buildEnvioDteSinFirmar, firmarEnvioDteEnSitio } from './dte/envioDte.js';
 import * as siiClient from './dte/siiClient.js';
 
 // Orquestador de emisión de DTE: reserva de folio (atómica), armado+firma (services/dte/*),
@@ -77,8 +77,10 @@ async function reservarFolio(conn, tipoDte, ambiente) {
 }
 
 /**
- * Emite un DTE completo: reserva folio, arma y firma el documento, arma y firma el sobre,
- * lo envía al SII, y persiste el resultado (éxito o error) en dte_documentos.
+ * Emite un DTE completo: reserva folio, arma el Documento y el sobre EnvioDTE sin firmar, firma
+ * "en sitio" (Documento y luego SetDTE, ya ensamblados en su posición final -- ver
+ * envioDte.js firmarEnvioDteEnSitio), lo envía al SII, y persiste el resultado (éxito o error) en
+ * dte_documentos (`xml_firmado` guarda el sobre EnvioDTE completo, no solo el Documento).
  *
  * @param {Object} params
  * @param {number} params.idProyecto
@@ -101,21 +103,28 @@ export async function emitirDte({ idProyecto, idPago = null, tipoDte, emisor, re
         const caf = await cargarCafPorId(idCaf);
         const fechaEmision = new Date().toISOString().slice(0, 10);
 
-        const { documentoId, montos, dteXmlFirmado } = buildYFirmarDte({
-            tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, caf, pemData,
+        const { documentoId, montos, documentoXml } = buildDte({
+            tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, caf,
         });
 
         const { rut: rutEmisorSinDv, dv: dvEmisor } = splitRut(emisor.rut);
         // RutEnvia debe ser el RUT del titular del certificado (quien firma), no necesariamente
         // el de la empresa emisora — pueden ser personas distintas (representante autorizado).
         const { rut: rutEnviaSinDv, dv: dvEnvia } = splitRut(extraerRutCertificado(pemData.certificate));
-        const caratula = buildCaratula({
+
+        const documentos = [{ documentoId, documentoXml, tipoDte }];
+        const envioId = `SetDoc${documentoId}`;
+        const { envioXmlSinFirmar } = buildEnvioDteSinFirmar({
             rutEmisor: emisor.rut,
             rutEnvia: `${rutEnviaSinDv}-${dvEnvia}`,
             fchResol: caf.fechaAutorizacion,
-            subtotales: [{ tipoDte, cantidad: 1 }],
+            documentos,
+            envioId,
         });
-        const envioFirmado = buildYFirmarEnvioDte(caratula, [dteXmlFirmado], pemData, `SetDoc${documentoId}`);
+        // Firmar "en sitio" (Documento y luego SetDTE, ya insertados en su posición final dentro
+        // del sobre completo) -- ver envioDte.js firmarEnvioDteEnSitio para el porqué: firmar
+        // antes de ensamblar el sobre invalidaba la firma contra el SII real (2026-07-19).
+        const envioFirmado = firmarEnvioDteEnSitio(envioXmlSinFirmar, documentos, envioId, pemData);
 
         const token = await siiClient.obtenerToken(pemData, ambiente);
         const resultadoEnvio = await siiClient.enviarSetDte({
@@ -140,7 +149,7 @@ export async function emitirDte({ idProyecto, idPago = null, tipoDte, emisor, re
             [
                 idProyecto, idPago, tipoDte, folio, ambiente, resultadoEnvio.trackId, estadoSii,
                 montos.montoNeto, montos.iva, montos.montoExento, montos.montoTotal,
-                receptor.rut || null, receptor.nombre || null, JSON.stringify(detalle), dteXmlFirmado, errorMensaje, emitidoPor,
+                receptor.rut || null, receptor.nombre || null, JSON.stringify(detalle), envioFirmado, errorMensaje, emitidoPor,
             ]
         );
         await db.ejecutarQuery(

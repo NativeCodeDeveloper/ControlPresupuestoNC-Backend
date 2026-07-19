@@ -80,7 +80,7 @@ export function wrapBase64(base64String, lineLength = 76) {
  * @param {string} referenceId - el valor del atributo ID del elemento a firmar (sin '#').
  * @returns {string} el XML original con la firma <Signature> insertada.
  */
-export function signDocumento(xmlString, pemData, referenceId) {
+export function signDocumento(xmlString, pemData, referenceId, options = {}) {
     const { privateKeyPem, certPem, certificate } = pemData;
     const publicKey = certificate.publicKey;
 
@@ -120,7 +120,15 @@ export function signDocumento(xmlString, pemData, referenceId) {
         digestAlgorithm: SHA1,
     });
 
-    sig.computeSignature(xmlString);
+    // `options.location` permite insertar la <Signature> junto al elemento referenciado en vez
+    // de al final del documento raíz (default de xml-crypto) -- necesario para firmar "en sitio"
+    // dentro de un árbol ya ensamblado (ver envioDte.js buildYFirmarEnvioDteEnSitio): firmar
+    // ANTES de insertar en el contexto final rompía la firma, porque tanto el digest de la
+    // Referencia como el propio SignedInfo son sensibles a namespaces heredados de ancestros que
+    // todavía no existían al momento de firmar (confirmado 2026-07-19, ver verify.js §4).
+    sig.computeSignature(xmlString, {
+        location: options.location || { reference: '/*', action: 'append' },
+    });
     return sig.getSignedXml();
 }
 

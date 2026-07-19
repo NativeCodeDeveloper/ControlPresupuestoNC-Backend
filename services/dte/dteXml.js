@@ -194,9 +194,10 @@ function buildReferencia(referencias) {
 }
 
 /**
- * Arma y firma el DTE completo: Encabezado + Detalle + Timbre Electrónico (TED, ver ted.js) +
- * TmstFirma, envuelto en <DTE><Documento ID="...">...</Documento></DTE>, y firmado con XMLDSig
- * estándar usando el certificado del emisor (ver signXml.js).
+ * Arma (sin firmar) el contenido de <Documento>: Encabezado + Detalle + Timbre Electrónico (TED,
+ * ver ted.js) + TmstFirma. Separado de la firma porque el sobre EnvioDTE debe firmarse "en sitio"
+ * -- una vez que el Documento ya está en su posición final dentro de <DTE><EnvioDTE>...</EnvioDTE>
+ * -- y no antes (ver envioDte.js `buildYFirmarEnvioDteEnSitio` para el porqué).
  *
  * @param {Object} params
  * @param {33|39} params.tipoDte
@@ -208,11 +209,10 @@ function buildReferencia(referencias) {
  * @param {Array}  [params.descuentosGlobales] - ver `computeMontosFactura` (ignorado en Boleta)
  * @param {Array}  [params.referencias] - [{ tpoDocRef, folioRef, fchRef, codRef, razonRef }], para Nota de Crédito/Débito (61/56)
  * @param {Object} params.caf - resultado de ted.parseCaf(cafXml)
- * @param {{ certPem: string, privateKeyPem: string, certificate: import('node-forge').pki.Certificate }} params.pemData
  * @param {string} [params.fechaVencimiento]
- * @returns {{ documentoId: string, montos: object, dteXmlFirmado: string }}
+ * @returns {{ documentoId: string, montos: object, documentoXml: string }}
  */
-export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, descuentosGlobales = [], referencias = [], caf, pemData }) {
+export function buildDte({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, descuentosGlobales = [], referencias = [], caf }) {
     if (!Array.isArray(detalle)) {
         throw new Error('El documento requiere un arreglo de detalle');
     }
@@ -256,12 +256,10 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
     const dscRcGlobalXml = buildDscRcGlobal(descuentosGlobales);
     const referenciaXml = buildReferencia(referencias);
 
+    // xmlns declarado directamente aquí (no solo en el <DTE> que lo envuelve) -- necesario para
+    // que la firma sea válida sin importar en qué contexto termine insertado este Documento (ver
+    // envioDte.js buildYFirmarEnvioDteEnSitio y verify.js §4).
     const documentoXml =
-        // xmlns declarado directamente aquí (no solo en <DTE>) -- confirmado bug real de
-        // xml-crypto (2026-07-19): cuando el elemento referenciado por la firma hereda el
-        // namespace de un ancestro en vez de declararlo él mismo, el digest calculado al firmar
-        // no coincide con el que se recalcula al verificar ("Rechazado por Error en Firma" en el
-        // SII real) -- independiente de si se usa C14N normal o exclusivo. Ver services/dte/verify.js §4.
         `<Documento xmlns="http://www.sii.cl/SiiDte" ID="${documentoId}">\n` +
         encabezado +
         detalleXml +
@@ -271,12 +269,28 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
         tag('TmstFirma', timestamp) +
         `</Documento>`;
 
+    return { documentoId, montos, documentoXml };
+}
+
+/**
+ * Arma y firma un DTE completo standalone: envuelve `buildDte()` en `<DTE>...</DTE>` y firma
+ * inmediatamente (root = <DTE>). Usar `buildDte()` + `buildYFirmarEnvioDteEnSitio()` en su lugar
+ * cuando el documento se va a insertar dentro de un sobre EnvioDTE con más atributos/namespaces
+ * (xsi:schemaLocation, etc.) -- firmar antes de insertar en el contexto final invalida la firma
+ * (confirmado 2026-07-19, ver verify.js §4). Esta función solo sirve para pruebas offline o para
+ * inspeccionar un DTE de forma aislada.
+ *
+ * @param {Object} params - mismos que `buildDte`
+ * @param {{ certPem: string, privateKeyPem: string, certificate: import('node-forge').pki.Certificate }} params.pemData
+ * @returns {{ documentoId: string, montos: object, dteXmlFirmado: string }}
+ */
+export function buildYFirmarDte(params) {
+    const { documentoId, montos, documentoXml } = buildDte(params);
     const dteXml =
         `<?xml version="1.0" encoding="ISO-8859-1"?>\n` +
         `<DTE xmlns="http://www.sii.cl/SiiDte" version="1.0">\n` +
         documentoXml +
         `\n</DTE>`;
-
-    const dteXmlFirmado = signDocumento(dteXml, pemData, documentoId);
+    const dteXmlFirmado = signDocumento(dteXml, params.pemData, documentoId);
     return { documentoId, montos, dteXmlFirmado };
 }
