@@ -315,9 +315,54 @@ del SII, no de schema, así que no se pudo confirmar/descartar por esta vía).
 todavía rechaza `TipoDTE=39` dentro de `<EnvioDTE>` — la enumeración permitida es
 `[33, 34, 43, 46, 52, 56, 61, 110, 111, 112]`, sin Boleta. **Boleta Electrónica requiere su propio
 sobre `<EnvioBOLETA>`** (Formato Boletas Electrónicas v4.00), no implementado todavía — ver §5.12.
-Factura (33) y el resto de tipos del Set de §5.0 **sí** deberían funcionar con el `<EnvioDTE>` ya
-arreglado — pendiente de confirmar con una emisión real de Factura (folio #1 del CAF 33, aún sin
-usar).
+
+**Continuación 2026-07-19 — 2 bugs más de firma + reestructuración completa (folios #1 y #2 de
+Factura consumidos y rechazados antes de resolver):**
+
+5. **Transform incorrecto**: el schema real (`xmldsignature_v10.xsd`, obtenido y leído completo)
+   confirma `maxOccurs=1` para `<Transform>` — pero el algoritmo correcto es **C14N, no
+   enveloped-signature**. Se confirmó comparando byte a byte contra el "DTE de ejemplo" oficial
+   del SII (`manual_certificacion.pdf` Anexo 5.1, un ejemplo con firma válida real): ahí
+   `<Signature>` va como *hermano* de `<Documento>` (nunca anidado dentro), así que no hace falta
+   "envelope-strip" — solo canonicalizar de verdad. `xml-crypto` solo aplica canonicalización real
+   cuando el Transform declarado es un algoritmo de canonicalización; con enveloped-signature el
+   digest se calculaba sobre una serialización cruda del DOM que nunca iba a coincidir con la
+   verificación real. **Arreglado** en `signXml.js`.
+6. **La causa de fondo real**: incluso con el Transform correcto, firmar un `<Documento>`/`<SetDTE>`
+   mientras todavía está aislado (antes de insertarlo en su `<EnvioDTE>` final, que agrega
+   `xmlns:xsi`/`xsi:schemaLocation` — **obligatorio**, confirmado con STATUS 7 "Invalid Schema
+   Name" sin él) invalida la firma en cuanto ese ancestro agrega el namespace nuevo — afecta tanto
+   el digest de la Referencia como el propio `<SignedInfo>`, con C14N normal o exclusivo por
+   igual. No hay forma de firmar aislado y reinsertar después de forma segura si el contexto final
+   agrega namespaces. **Solución real**: dejar de reinsertar — separar "armar" de "firmar" y
+   firmar solo cuando el documento ya está en su posición final dentro del sobre completo:
+   - `dteXml.js`: nuevo `buildDte()` arma el `<Documento>` SIN firmar. `buildYFirmarDte()` se
+     mantiene como wrapper standalone (firma inmediata, para uso aislado) — ya no debe reinsertarse
+     en otro documento después de firmado.
+   - `envioDte.js`: nuevo `buildEnvioDteSinFirmar()` ensambla el sobre completo (con
+     `xsi:schemaLocation` ya puesto) sin firmar nada. Nuevo `firmarEnvioDteEnSitio()` firma
+     `Documento` y luego `SetDTE`, ya ensamblados en su posición final, usando el nuevo soporte de
+     `location` en `signXml.js` (`signDocumento` acepta `location: {reference, action}` para
+     insertar la `<Signature>` junto al elemento referenciado, no al final del documento raíz).
+   - `dteService.js`: usa el nuevo flujo. `xml_firmado` ahora guarda el sobre `EnvioDTE` completo.
+   - Nueva regresión en `verify.js` §9: verificación criptográfica **real** de ambas firmas del
+     flujo completo de producción, con `xsi:schemaLocation` presente — 33/33 checks pasan.
+
+**Resultado tras el fix (folio #4, 2026-07-19):** primera vez en toda la sesión que el envío
+automatizado (`enviarSetDte`) fue **aceptado en la subida** (`"ok": true, "estadoSii": "enviado"`,
+Track ID real) — el bug de Transform + firma en sitio quedó resuelto de punta a punta a nivel de
+schema y subida. **Pero la validación final del SII sigue devolviendo "RFR - Rechazado por Error
+en Firma"** al consultar el estado del envío, pese a que ambas firmas se verifican como
+criptográficamente válidas incluso contra el certificado real (confirmado localmente, sin red).
+Esto ya no parece ser un bug de código — hipótesis actual: el certificado usado (**Nicolás Gabriel
+Machuca Carrasco, RUT 19169587-9, emitido por "Acepta.com Autoridad Certificadora Clase 3 Persona
+Natural - G4"**) podría no estar acreditado específicamente para firma de DTE ante el SII (el
+`.pfx` solo trae el certificado hoja, sin cadena — aunque el schema del SII de todos modos solo
+permite un `<X509Certificate>` en `<X509Data>`, no una cadena, así que esto no parece ser
+arreglable agregando más certificados). **Pendiente**: confirmar con Acepta.com si este
+certificado/clase sirve para firma de Documentos Tributarios Electrónicos específicamente.
+Queda **1 folio de Factura sin usar** (folio #5) — no gastarlo hasta tener una hipótesis nueva y
+sólida que probar.
 
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
