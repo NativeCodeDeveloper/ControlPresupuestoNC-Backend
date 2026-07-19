@@ -1,7 +1,7 @@
 import fs from 'fs';
 import DataBase from '../config/Database.js';
 import { parseCaf } from './dte/ted.js';
-import { pfxToPem } from './dte/signXml.js';
+import { pfxToPem, extraerRutCertificado } from './dte/signXml.js';
 import { buildYFirmarDte } from './dte/dteXml.js';
 import { buildCaratula, buildYFirmarEnvioDte } from './dte/envioDte.js';
 import * as siiClient from './dte/siiClient.js';
@@ -106,9 +106,13 @@ export async function emitirDte({ idProyecto, idPago = null, tipoDte, emisor, re
         });
 
         const { rut: rutEmisorSinDv, dv: dvEmisor } = splitRut(emisor.rut);
+        // RutEnvia debe ser el RUT del titular del certificado (quien firma), no necesariamente
+        // el de la empresa emisora — pueden ser personas distintas (representante autorizado).
+        const { rut: rutEnviaSinDv, dv: dvEnvia } = splitRut(extraerRutCertificado(pemData.certificate));
         const caratula = buildCaratula({
             rutEmisor: emisor.rut,
-            rutEnvia: emisor.rut,
+            rutEnvia: `${rutEnviaSinDv}-${dvEnvia}`,
+            fchResol: caf.fechaAutorizacion,
             subtotales: [{ tipoDte, cantidad: 1 }],
         });
         const envioFirmado = buildYFirmarEnvioDte(caratula, [dteXmlFirmado], pemData, `SetDoc${documentoId}`);
@@ -116,8 +120,8 @@ export async function emitirDte({ idProyecto, idPago = null, tipoDte, emisor, re
         const token = await siiClient.obtenerToken(pemData, ambiente);
         const resultadoEnvio = await siiClient.enviarSetDte({
             envioXmlFirmado: envioFirmado,
-            rutEnvia: rutEmisorSinDv,
-            dvEnvia: dvEmisor,
+            rutEnvia: rutEnviaSinDv,
+            dvEnvia,
             rutCompania: rutEmisorSinDv,
             dvCompania: dvEmisor,
             token,

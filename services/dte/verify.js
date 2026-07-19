@@ -14,6 +14,20 @@
  *    página HTML de error genérica que el SII devuelve cuando el archivo no pasa su chequeo
  *    inicial) con "<STATUS>0</STATUS>" (aceptado) — Number(null) da 0 en JS, así que esto se
  *    verifica explícitamente contra la respuesta real capturada en la primera prueba en vivo.
+ * 8. Regresión + nuevo alcance: descuento/recargo global (<DscRcGlobal>) y Nota de Crédito con
+ *    Referencia (<Referencia>), agregados para el nuevo Set de Pruebas SII (SET BASICO, casos
+ *    4959502-1 a 8) — confirma que una Factura simple no cambia su XML, que el descuento global
+ *    calcula bien el neto/IVA, y que una NC sin líneas de detalle (solo referencia) arma y firma
+ *    correctamente.
+ * 9. Regresión — 3 bugs reales encontrados en la primera prueba real de envío (Boleta caso 1,
+ *    CAF real, 2026-07-19), ninguno detectable por las secciones anteriores porque `verify.js`
+ *    nunca había probado `envioDte.js` contra el validador de schema del SII:
+ *    a) `<FchResol>` es obligatorio en la Carátula (incluso con NroResol=0/autorización por
+ *       folios) — `buildCaratula` ahora lanza si no se pasa.
+ *    b) dentro de `<SubTotDTE>` el tag correcto es `<TpoDTE>`, no `<TipoDTE>` (ese nombre solo es
+ *       correcto dentro de `<IdDoc>` del propio DTE).
+ *    c) cada DTE trae su propio prólogo `<?xml ...?>`, que no puede quedar anidado dentro del
+ *       sobre `<EnvioDTE>` — `buildYFirmarEnvioDte` ahora lo quita antes de insertarlo.
  */
 import crypto from 'crypto';
 import forge from 'node-forge';
@@ -22,7 +36,8 @@ import { DOMParser } from '@xmldom/xmldom';
 import xpath from 'xpath';
 import { canonicalizeSiiTed, buildTedDatos, signTed, verifyTed, escapeTedText } from './ted.js';
 import { pfxToPem, signDocumento } from './signXml.js';
-import { buildYFirmarDte, computeMontosBoleta } from './dteXml.js';
+import { buildYFirmarDte, computeMontosBoleta, computeMontosFactura } from './dteXml.js';
+import { buildCaratula, buildYFirmarEnvioDte } from './envioDte.js';
 import { generarTimbrePdf417 } from './pdf417.js';
 import { parseUploadResponse } from './siiClient.js';
 
@@ -327,6 +342,127 @@ console.log('\n[7] Regresión — parseo de la respuesta de enviarSetDte (bug re
     const exitoso = parseUploadResponse(xmlExitoso);
     check('parseUploadResponse: STATUS=0 real se distingue de "sin STATUS"', exitoso.status === 0, `obtenido: ${exitoso.status}`);
     check('parseUploadResponse: extrae el TRACKID cuando sí viene', exitoso.trackId === '123456789', `obtenido: ${exitoso.trackId}`);
+}
+
+// ── 8. Nuevo alcance — descuento/recargo global + Referencia (Nota de Crédito), Set SII 4959502 ──
+console.log('\n[8] Descuento/recargo global (<DscRcGlobal>) + Referencia (<Referencia>) — SET BASICO 4959502');
+{
+    const pemData = generarPfxDePrueba();
+    const cafFactura = generarCafDePrueba({ tipoDte: 33, folioDesde: 1, folioHasta: 10 });
+    const cafNc = generarCafDePrueba({ tipoDte: 61, folioDesde: 1, folioHasta: 10 });
+    const emisorTest = { rut: cafFactura.rutEmisor, razonSocial: 'NATIVECODE SPA', giro: 'Desarrollo de software' };
+    const receptorTest = { rut: '11111111-1', nombre: 'Cliente Test' };
+
+    // 8.1 — Regresión: Factura simple (sin descuentosGlobales/referencias) no debe cambiar.
+    const facturaSimple = buildYFirmarDte({
+        tipoDte: 33, folio: 1, fechaEmision: '2026-07-18', emisor: emisorTest, receptor: receptorTest,
+        detalle: [
+            { nombre: 'Cajón', cantidad: 146, precioUnitario: 2237 },
+            { nombre: 'Relleno', cantidad: 62, precioUnitario: 3695 },
+        ],
+        caf: cafFactura, pemData,
+    });
+    check('Factura simple sin descuento global no genera <DscRcGlobal>', !facturaSimple.dteXmlFirmado.includes('<DscRcGlobal>'));
+    check('Factura simple sin referencias no genera <Referencia>', !facturaSimple.dteXmlFirmado.includes('<Referencia>'));
+
+    // 8.2 — Caso 4959502-4: descuento global 15% solo sobre ítems afectos.
+    const detalleCaso4 = [
+        { nombre: 'Ítem 1 afecto', cantidad: 252, precioUnitario: 3846 },
+        { nombre: 'Ítem 2 afecto', cantidad: 107, precioUnitario: 4373 },
+        { nombre: 'Ítem 3 servicio exento', cantidad: 2, precioUnitario: 6801, indExe: 1 },
+    ];
+    const descuentoGlobalCaso4 = [{ tpoMov: 'D', tpoValor: '%', valorDR: 15, glosaDR: 'Descuento global ítems afectos' }];
+    const montosCaso4 = computeMontosFactura(detalleCaso4, 0.19, descuentoGlobalCaso4);
+    const netoAfectoSinDescuento = 252 * 3846 + 107 * 4373;
+    const netoEsperado = netoAfectoSinDescuento - Math.round(netoAfectoSinDescuento * 0.15);
+    const ivaEsperado = Math.round(netoEsperado * 0.19);
+    check('descuento global 15% reduce el neto afecto antes del IVA', montosCaso4.montoNeto === netoEsperado,
+        `obtenido ${montosCaso4.montoNeto}, esperado ${netoEsperado}`);
+    check('el IVA se calcula sobre el neto ya descontado', montosCaso4.iva === ivaEsperado,
+        `obtenido ${montosCaso4.iva}, esperado ${ivaEsperado}`);
+    check('montoNeto + IVA + exento reconstruyen el total (con descuento global)',
+        montosCaso4.montoNeto + montosCaso4.iva + montosCaso4.montoExento === montosCaso4.montoTotal);
+
+    const facturaConDescuentoGlobal = buildYFirmarDte({
+        tipoDte: 33, folio: 2, fechaEmision: '2026-07-18', emisor: emisorTest, receptor: receptorTest,
+        detalle: detalleCaso4, descuentosGlobales: descuentoGlobalCaso4, caf: cafFactura, pemData,
+    });
+    check('el XML incluye <DscRcGlobal> con el descuento aplicado',
+        facturaConDescuentoGlobal.dteXmlFirmado.includes('<DscRcGlobal>') && facturaConDescuentoGlobal.dteXmlFirmado.includes('<TpoValor>%</TpoValor>'));
+
+    // 8.3 — Caso 4959502-5: Nota de Crédito que solo corrige texto, sin líneas de detalle, con Referencia.
+    let errorNcSinDetalle = null;
+    let ncSinDetalle;
+    try {
+        ncSinDetalle = buildYFirmarDte({
+            tipoDte: 61, folio: 1, fechaEmision: '2026-07-18', emisor: emisorTest, receptor: receptorTest,
+            detalle: [],
+            referencias: [{ tpoDocRef: 33, folioRef: 1, fchRef: '2026-07-18', codRef: 2, razonRef: 'Corrige giro del receptor' }],
+            caf: cafNc, pemData,
+        });
+    } catch (e) {
+        errorNcSinDetalle = e;
+    }
+    check('una Nota de Crédito con referencia y sin líneas de detalle no lanza error', !errorNcSinDetalle, errorNcSinDetalle?.message);
+    if (ncSinDetalle) {
+        check('el XML incluye <Referencia> con el folio y la razón correctos',
+            ncSinDetalle.dteXmlFirmado.includes('<FolioRef>1</FolioRef>') && ncSinDetalle.dteXmlFirmado.includes('Corrige giro del receptor'));
+        check('el documento igual arma TED y Signature aunque no tenga detalle',
+            ncSinDetalle.dteXmlFirmado.includes('<TED version="1.0">') && ncSinDetalle.dteXmlFirmado.includes('<Signature'));
+    } else {
+        check('<Referencia> / TED / Signature (omitidos por error previo)', false);
+    }
+
+    // 8.4 — Una Factura normal (sin referencias) sigue rechazando detalle vacío — no se relajó de más.
+    check('una Factura sin referencias sigue rechazando detalle vacío', (() => {
+        try {
+            buildYFirmarDte({
+                tipoDte: 33, folio: 3, fechaEmision: '2026-07-18',
+                emisor: emisorTest, receptor: { nombre: 'x' }, detalle: [], caf: cafFactura, pemData,
+            });
+            return false;
+        } catch { return true; }
+    })());
+}
+
+// ── 9. Regresión — bugs reales del sobre EnvioDTE (FchResol, TpoDTE, XML anidado) ──
+console.log('\n[9] Regresión — sobre EnvioDTE: FchResol obligatorio, TpoDTE, sin <?xml?> anidado (bugs reales 2026-07-19)');
+{
+    check('buildCaratula rechaza si falta fchResol (incluso con nroResol=0)', (() => {
+        try {
+            buildCaratula({ rutEmisor: '78184828-K', rutEnvia: '19169587-9', subtotales: [{ tipoDte: 39, cantidad: 1 }] });
+            return false;
+        } catch { return true; }
+    })());
+
+    const caratula = buildCaratula({
+        rutEmisor: '78184828-K',
+        rutEnvia: '19169587-9',
+        fchResol: '2026-07-18',
+        subtotales: [{ tipoDte: 39, cantidad: 1 }],
+    });
+    check('la Carátula incluye <FchResol> con el valor pasado', caratula.includes('<FchResol>2026-07-18</FchResol>'));
+    check('<SubTotDTE> usa <TpoDTE>, no <TipoDTE>', caratula.includes('<TpoDTE>39</TpoDTE>') && !caratula.includes('<TipoDTE>39</TipoDTE>'));
+    const ordenCorrecto = caratula.indexOf('<RutReceptor>') < caratula.indexOf('<FchResol>') && caratula.indexOf('<FchResol>') < caratula.indexOf('<NroResol>');
+    check('orden de la Carátula: RutReceptor, FchResol, NroResol', ordenCorrecto);
+
+    const pemData = generarPfxDePrueba();
+    const cafSintetico = generarCafDePrueba({ tipoDte: 39 });
+    const { dteXmlFirmado } = buildYFirmarDte({
+        tipoDte: 39, folio: 1, fechaEmision: '2026-07-18',
+        emisor: { rut: cafSintetico.rutEmisor, razonSocial: 'NATIVECODE SPA' },
+        receptor: { rut: '66666666-6', nombre: 'Cliente de Prueba' },
+        detalle: [{ nombre: 'Cambio de aceite', cantidad: 1, precioUnitario: 19900 }],
+        caf: cafSintetico, pemData,
+    });
+    check('cada DTE individual sigue trayendo su propio <?xml?> (para uso standalone)', /^<\?xml/.test(dteXmlFirmado));
+
+    const envioFirmado = buildYFirmarEnvioDte(caratula, [dteXmlFirmado], pemData, 'SetDocTest9');
+    const declaracionesXml = (envioFirmado.match(/<\?xml/g) || []).length;
+    check('el sobre EnvioDTE tiene un único <?xml?> (no queda anidado el del DTE individual)', declaracionesXml === 1,
+        `se encontraron ${declaracionesXml}`);
+    check('el sobre EnvioDTE arma y firma sin error (contiene <Signature> y <SetDTE>)',
+        envioFirmado.includes('<Signature') && envioFirmado.includes('<SetDTE'));
 }
 
 console.log(`\n${failed === 0 ? '✅ Todas las verificaciones pasaron.' : `❌ ${failed} verificación(es) fallaron.`}\n`);

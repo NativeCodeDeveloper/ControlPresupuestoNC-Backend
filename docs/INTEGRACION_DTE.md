@@ -19,10 +19,23 @@
 - [x] Registro como emisor DTE ante el SII — **ya habilitado**. Confirmado además por correo del
       SII: *"la empresa ya se encuentra autorizada para descargar CAF de boletas electrónicas en
       el ambiente de certificación"*.
-- [ ] CAF Tipo 39 (boletas) — **pendiente, lo solicita el usuario cuando esté todo listo** (ver
-      §5, hay una ventana de 24 horas desde la descarga).
-- [ ] CAF Tipo 33 (facturas) — pendiente.
-- [x] Recibido el **Set de Pruebas oficial de Boleta Electrónica** del SII — guardado en §5.
+- [x] **CAF Tipo 39 (boletas) — descargado y cargado** (2026-07-19, ambiente certificación, folios
+      1-5). Ventana de 24h corriendo desde la descarga — emitir los 5 casos del Set de Boleta
+      (§5.12) pronto. **Track de certificación independiente** del Set de §5.0-5.11.
+- [x] **CAF Tipo 33 (facturas) — descargado y cargado** (2026-07-19, certificación, folios 1-5).
+- [x] **CAF Tipo 61 (Nota de Crédito) y 56 (Nota de Débito) — descargados y cargados** (2026-07-19,
+      certificación, folios 1-5 cada uno) — alcanza para los 8 casos del SET BASICO (§5.1).
+- [ ] CAF Tipo 52 (Guía Despacho), 34 (Factura Exenta) y el resto de tipos opcionales del Set de
+      Pruebas de §5.0-5.11 — pendiente, ver brecha de implementación en §5.11 (no priorizado aún).
+- [x] Recibido el Set de Pruebas oficial de Boleta Electrónica (§5.12) — **vigente, no obsoleto**.
+      Corrección 2026-07-18: se pensó que el Set de Pruebas nuevo (§5.0) lo reemplazaba, pero el
+      aviso del SII ("si obtiene un nuevo Set de Pruebas, éste reemplazará al actualmente vigente")
+      aplica por tipo de documento — Boleta nunca se volvió a solicitar en esta ronda (no aparece
+      en la tabla de "Sets Obtenidos" de §5.0, que es del proceso de certificación de Factura/
+      NC-ND/Guía/Exenta/Exportación/Liquidación/Factura de Compra), así que su Set original (5
+      casos) sigue siendo el vigente. Reconfirmado por correo del SII sobre Boleta que el usuario
+      ya tenía de antes (recibido la noche previa a esta corrección, no es una respuesta nueva del
+      SII a la ronda del Set de §5.0) — mismo procedimiento de 5 pasos ya documentado en §5.12.
 
 ### Etapa 1 — Formulario/PDF borrador (COMPLETA, en producción)
 Construida para validar campos y flujo antes de tener el motor de firma real.
@@ -351,95 +364,197 @@ repo. Autenticación probada y confirmada contra el SII real (§2.7, §4.1).
 
 Los archivos CAF (XML) se registran en la tabla `dte_caf` (`ruta_archivo` apunta a
 `/root/finance/secrets/dte/caf/...`, misma carpeta fuera de git) — no hay UI de carga todavía,
-se inserta el registro a mano la primera vez (`INSERT INTO dte_caf (...)`).
+se inserta el registro a mano (script desechable Tipo B, mismo patrón que `test_token_sii.js`).
+
+**4 CAF cargados en producción (2026-07-19, certificación, folios 1-5 cada uno):** tipo 33
+(Factura), 39 (Boleta), 56 (Nota de Débito), 61 (Nota de Crédito) — ids 1-4 en `dte_caf`, archivos
+en `/root/finance/secrets/dte/caf/caf_{tipo}_cert_1-5.xml`, permisos 600. Confirmado `RE=78184828-K`,
+`RS=NATIVECODE SPA`, `FA=2026-07-18` en los 4. Ventana de 24h corriendo desde esa fecha — usar los
+folios pronto (Set de Boleta §5.12, casos NC/ND del SET BASICO §5.1).
 
 ---
 
-## 5. Set de Pruebas SII — Boleta Electrónica (recibido, listo para usar)
+## 5. Set de Pruebas SII
 
-> Documento oficial del SII, "SET DE PRUEBA DE BOLETA ELECTRÓNICA DE VENTAS Y SERVICIOS".
-> Se omitieron tildes en el original para evitar problemas de lectura.
+### 5.0 Vigente — Set de Certificación completo (recibido 2026-07-18)
+
+> Este Set no incluye Boleta (Tipo 39) en absoluto — es enteramente Factura (33) + Nota de
+> Crédito/Débito (61/56) + Guía de Despacho (52) + Factura Exenta (34) + Documentos de
+> Exportación + Liquidación Factura + Factura de Compra (46). Emisor: **NATIVECODE SPA, RUT
+> 78184828-K**.
+>
+> **Corrección 2026-07-18:** este Set **no reemplaza** al de Boleta Electrónica (§5.12) — son dos
+> trámites de certificación independientes. La advertencia del SII sobre "un Set nuevo reemplaza
+> al vigente" aplica solo si se vuelve a pedir Set **del mismo tipo de documento**; Boleta no se
+> volvió a solicitar en esta ronda (no aparece en la tabla de "Sets Obtenidos" de abajo, que es
+> del trámite de Factura/NC-ND/Guía/Exenta/Exportación/Liquidación/Factura de Compra), así que su
+> Set original de 5 casos sigue vigente. Confirmado por correo propio del SII sobre Boleta,
+> recibido el mismo día.
 
 **Indicaciones generales del SII:**
-- Para datos del contribuyente (giro, razón social, direcciones, sucursales, Dirección Regional o
-  Unidad) consultar en "Mi SII". No usar abreviaciones en los giros.
-- Informar cifras con separador de miles; los caracteres deben ir tal cual aparecen en el Set.
-- Cada boleta debe referenciar su caso correspondiente en el XML:
-  ```xml
-  <CodRef>SET</CodRef>
-  <RazonRef>CASO-1</RazonRef>
-  ```
+- Adjuntar ejemplar tributario y cedible de: Factura Electrónica, Factura No Afecta o Exenta
+  Electrónica, Guía de Despacho Electrónica y Factura de Compra Electrónica.
+- Datos del contribuyente (giro, razón social, direcciones, sucursales, Dirección Regional o
+  Unidad) se consultan en "Mi SII". No usar abreviaciones en los giros, ni agregar textos que
+  informen arreglos de contrato con los clientes.
+- Los descuentos por línea o globales deben indicarse en las representaciones impresas (PDF).
+- Cifras con separador de miles usando `.`.
 
-### CASO-1
-| Ítem | Cantidad | Precio Unitario con IVA |
+**Estado del set en el portal SII (snapshot 2026-07-18) — todos "POR REALIZAR":**
+
+| Set | Estado |
+|---|---|
+| SET BASICO | Por realizar |
+| SET GUIA DE DESPACHO | Por realizar |
+| SET FACTURA EXENTA | Por realizar |
+| LIBRO DE VENTAS | Por realizar |
+| LIBRO DE COMPRAS | Por realizar |
+| LIBRO DE GUIAS | Por realizar |
+| SET DOCUMENTOS DE EXPORTACION | Por realizar |
+| SET DOCUMENTOS DE EXPORTACION (2) | Por realizar |
+| SET CASO GENERAL FACTURA COMPRA | Por realizar |
+| SET LIQUIDACION FACTURA | Por realizar |
+
+#### 5.1 SET BASICO — N° atención 4959502 (Factura Electrónica + NC/ND)
+
+| Caso | Documento | Ítems | Notas |
+|---|---|---|---|
+| 1 | Factura Electrónica | Cajón AFECTO 146×2.237; Relleno AFECTO 62×3.695 | simple, sin descuento |
+| 2 | Factura Electrónica | Pañuelo AFECTO 503×3.947 (desc. ítem 7%); ÍTEM 2 AFECTO 439×3.005 (desc. ítem 14%) | **descuento por línea** |
+| 3 | Factura Electrónica | Pintura B&W AFECTO 38×4.594; ÍTEM 2 AFECTO 193×3.422; ÍTEM 3 SERVICIO EXENTO 1×35.005 | mixto afecto/exento |
+| 4 | Factura Electrónica | ÍTEM 1 AFECTO 252×3.846; ÍTEM 2 AFECTO 107×4.373; ÍTEM 3 SERVICIO EXENTO 2×6.801 | + **descuento global 15% solo sobre ítems afectos** |
+| 5 | Nota de Crédito Electrónica | Referencia: Factura del CASO-1 | Razón: "Corrige giro del receptor" (sin líneas de detalle) |
+| 6 | Nota de Crédito Electrónica | Referencia: Factura del CASO-2 | Razón: "Devolución de mercaderías" — Pañuelo AFECTO 185; ÍTEM 2 AFECTO 297 (cantidades, sin precio — usa el de la factura referenciada) |
+| 7 | Nota de Crédito Electrónica | Referencia: Factura del CASO-3 | Razón: "Anula factura" (anula completa) |
+| 8 | Nota de Débito Electrónica | Referencia: NC del CASO-5 | Razón: "Anula Nota de Crédito Electrónica" |
+
+#### 5.2 SET LIBRO DE VENTAS — N° atención 4959503
+
+Construir el Libro de Ventas con los documentos generados en el SET BASICO (§5.1) — es un reporte
+(IECV), no un DTE individual.
+
+#### 5.3 SET LIBRO DE COMPRAS — N° atención 4959504
+
+Documentos a registrar en el libro (no se emiten, son de terceros/recibidos):
+
+| Tipo documento | Folio | Observación | Monto exento | Monto afecto |
+|---|---|---|---|---|
+| Factura | 234 | Factura del giro con derecho a crédito | — | 63.321 |
+| Factura Electrónica | 32 | Factura del giro con derecho a crédito | 11.197 | 13.032 |
+| Factura | 781 | Factura con IVA uso común (factor proporcionalidad **0,60**) | — | 30.292 |
+| Nota de Crédito | 451 | NC por descuento a factura 234 | — | 2.994 |
+| Factura Electrónica | 67 | Entrega gratuita del proveedor | — | 12.800 |
+| Factura de Compra Electrónica | 9 | Compra con retención total del IVA | — | 10.965 |
+| Nota de Crédito | 211 | NC por descuento factura electrónica 32 | — | 10.498 |
+
+#### 5.4 SET GUIA DE DESPACHO — N° atención 4959505
+
+> Señalar el tipo de traslado en todos los casos. Si el traslado es "Interno", receptor = emisor;
+> al no constituir venta, el ejemplar cedible es inoficioso.
+
+| Caso | Motivo | Traslado por | Ítems |
+|---|---|---|---|
+| 1 | Traslado de materiales entre bodegas de la empresa | — (interno) | ÍTEM 1 ×78; ÍTEM 2 ×122; ÍTEM 3 ×83 (sin precio) |
+| 2 | Venta | Emisor del documento al local del cliente | ÍTEM 1 345×7.061; ÍTEM 2 666×1.621 |
+| 3 | Venta | Cliente | ÍTEM 1 168×1.949; ÍTEM 2 412×5.519 |
+
+#### 5.5 SET LIBRO DE GUIAS — N° atención 4959506
+
+Construir con las guías del §5.4. El CASO 2 se facturó en el período; el CASO 3 fue anulado.
+
+#### 5.6 SET FACTURA EXENTA — N° atención 4959507
+
+> No informar el monto IVA 19% en Factura No Afecta o Exenta (solo monto Exento y Total).
+
+| Caso | Documento | Ítems | Notas |
+|---|---|---|---|
+| 1 | Factura No Afecta o Exenta Electrónica | Horas Programador 3×2.745 (Hora) | — |
+| 2 | Nota de Crédito Electrónica | Ref: Factura del CASO-1 | Razón: "Modifica monto" — Horas Programador → 343 |
+| 3 | Factura No Afecta o Exenta Electrónica | Serv. Consultoría Fact. Electrónica 1×187.349; Serv. Consultoría Guía Despacho Elect. 1×198.897 | — |
+| 4 | Nota de Crédito Electrónica | Ref: Factura del CASO-3 | Razón: "Corrige giro" |
+| 5 | Nota de Débito Electrónica | Ref: NC del CASO-4 | Razón: "Anula Nota de Crédito Electrónica" |
+| 6 | Factura No Afecta o Exenta Electrónica | Capacitación uso cigüeñales 1×276.206; Capacitación uso PLC's CNC 1×174.503 | — |
+| 7 | Nota de Crédito Electrónica | Ref: Factura del CASO-6 | Razón: "Modifica monto" — Capacitación cigüeñales → 138.103 |
+| 8 | Nota de Débito Electrónica | Ref: Factura del CASO-6 | Razón: "Modifica monto" — Capacitación PLC's CNC → 34.901 |
+
+#### 5.7 SET DOCUMENTOS DE EXPORTACION (1) — N° atención 4959508
+
+| Caso | Documento | Ítems | Datos de exportación |
+|---|---|---|---|
+| 1 | Factura de Exportación Electrónica | Chatarra de Aluminio 808×171 (LT) | Ref: MIC; moneda Libra Est.; sin pago; consignación con mínimo a firme; cláusula S/CL (total 4.248,06); vía marítima/fluvial/lacustre; Punta Arenas → Yokohama; tara PAR, peso bruto/neto LT; bultos: 81 rollos; flete 3.007,66; seguro 2.129,45; destino Japón |
+| 2 | NC de Exportación Electrónica | Ref: Factura CASO-1 | Razón: "Devolución de mercadería" — Chatarra de Aluminio ×269 (mismo precio unitario de la factura) |
+| 3 | ND de Exportación Electrónica | Ref: NC CASO-2 | Razón: "Anula nota de crédito" |
+
+#### 5.8 SET DOCUMENTOS DE EXPORTACION (2) — N° atención 4959509
+
+| Caso | Documento | Ítems | Datos de exportación |
+|---|---|---|---|
+| 1 | Factura de Exportación Electrónica | Asesorías y proyectos profesionales, valor línea 33 | Ref: Resolución SNA; moneda Euro; cobranza; cláusula CIF; carretero/terrestre; Caldera → Sidney; destino Australia; **recargo 10% en la línea por comisiones en el exterior** |
+| 2 | Factura de Exportación Electrónica | Cajas ciruelas tiernizadas 428×133 (KN); cajas pasas uva 182×79 (KN) | Ref: DUS, AWB; moneda Euro; cobranza; venta bajo condición; cláusula CIF (total 1.966,49); carretero/terrestre; Caldera → Sidney; tara U, peso bruto/neto KN; bultos: 43 pallets; flete 644,52; seguro 211,24; destino Australia; **recargo global 11% del total cláusula; descuento línea #1: 5%** |
+| 3 | Factura de Exportación Electrónica | Alojamiento habitaciones, valor línea 98 | Moneda Dólar USA; nacionalidad Australia |
+
+Instrucciones: todos los documentos de exportación se asumen del mismo período tributario; asignar
+folio autorizado y completar encabezado; **enviar en envíos separados** el Set (1) y el Set (2).
+Flete/Seguro van en los campos informativos del encabezado **y** como dos líneas de recargo global.
+
+#### 5.9 SET BASICO LIQUIDACIONES — N° atención 4959510
+
+Liquidación Factura Electrónica, 4 casos con líneas Neto/Exento por documento referenciado
+(facturas, boletas, NC, comisiones) — ver correo original para el detalle línea por línea si se
+implementa; no transcrito aquí por ser el set con menor prioridad (opcional, sin código de
+Liquidación construido todavía).
+
+#### 5.10 SET CASO GENERAL EMISOR FACTURA DE COMPRA — N° atención 4959511
+
+| Caso | Documento | Ítems | Notas |
+|---|---|---|---|
+| 1 | Factura de Compra Electrónica | Producto 1 1.088×8.250; Producto 2 41×4.591 | — |
+| 2 | Nota de Crédito Electrónica | Ref: Factura de Compra CASO-1 | Razón: "Devolución de mercadería ítems 1 y 2" — Producto 1 ×363; Producto 2 ×14 (mismo precio unitario de la factura) |
+| 3 | Nota de Débito Electrónica | Ref: NC CASO-2 | Razón: "Anula Nota de Crédito Electrónica" |
+
+#### 5.11 Brecha con lo construido hoy (importante antes de tocar código)
+
+| Falta construir | Necesario para | Estado |
 |---|---|---|
-| Cambio de aceite | 1 | 19.900 |
-| Alineación y balanceo | 1 | 9.900 |
+| Descuento/recargo **por línea** | §5.1 caso 2, §5.8 caso 2 | [x] Ya existía (`descuentoMonto` por línea) |
+| Descuento/recargo **global** | §5.1 caso 4, §5.8 casos 1 y 2 | [x] **Construido y verificado Tipo A** (`buildDscRcGlobal`, `verify.js` §8) — falta CAF real para Tipo B/C |
+| **Nota de Crédito Electrónica (61)** con referencia a otro DTE | §5.1, §5.6, §5.7, §5.10 (la mayoría de los casos) | [x] **Construido y verificado Tipo A** (`buildReferencia`, `verify.js` §8) — falta CAF real para Tipo B/C |
+| **Nota de Débito Electrónica (56)** con referencia | §5.1, §5.6, §5.7, §5.10 | [x] Mismo mecanismo que NC (61), motor es genérico por `tipoDte` |
+| **Guía de Despacho Electrónica (52)** (con tipo de traslado) | §5.4 | [ ] Pendiente — próxima pasada |
+| **Factura No Afecta o Exenta Electrónica (34)** (sin IVA en el XML) | §5.6 | [ ] Sin cambios de motor necesarios (usa `computeMontosFactura` con todas las líneas `indExe:1`) — falta probar el caso puntual |
+| **Factura de Exportación Electrónica (110)** + NC/ND Exportación (111/112) + bloque `Aduana` | §5.7, §5.8 | [ ] Pendiente — próxima pasada |
+| **Liquidación Factura Electrónica (43)** | §5.9 (opcional) | [ ] Pendiente — próxima pasada |
+| **Factura de Compra Electrónica (46)** | §5.10 (opcional) | [ ] Pendiente — próxima pasada |
+| Libro de Ventas / Compras / Guías (IECV) | §5.2, §5.3, §5.5 — sistema distinto al de emisión DTE, no evaluado aún | [ ] Sin evaluar |
 
-### CASO-2
-| Ítem | Cantidad | Precio Unitario con IVA |
+**Estado 2026-07-18:** el usuario priorizó explícitamente Factura Electrónica + Boleta ("lo
+importante por ahora es factura electrónica y boletas") — se implementó descuento global +
+Referencia (NC/ND) en `dteXml.js`, verificado offline (Tipo A, `verify.js` §8, 10/10 checks OK,
+cero regresión en las 7 secciones anteriores). Boleta (`computeMontosBoleta`) no se tocó. Todavía
+sin tocar `dteService.js`/`DteController.js`/rutas/frontend — eso espera CAF real (61/56/33) y una
+decisión de UI para elegir documento a referenciar + motivo, que hoy no existe en el modal "Emitir
+Documento Tributario".
+
+Para este Set (§5.0-5.11) los CAF a solicitar ya no son solo 33: se necesitan además **61, 56, 52,
+34** como mínimo para el SET BASICO + FACTURA EXENTA + GUÍA DE DESPACHO, y **46, 110/111/112, 43**
+si se aborda también Factura de Compra / Exportación / Liquidación — todo esto aparte del CAF 39
+(Boleta), que sigue su propio trámite independiente (§5.12).
+
+#### 5.12 VIGENTE — Set de Boleta Electrónica (track de certificación independiente)
+
+> Documento oficial del SII, "SET DE PRUEBA DE BOLETA ELECTRÓNICA DE VENTAS Y SERVICIOS". **Sigue
+> vigente** — no lo reemplazó el Set de §5.0 (ver corrección 2026-07-18 en §0 y §5.0: son dos
+> trámites de certificación distintos, Boleta nunca se volvió a solicitar). Confirmado por correo
+> propio del SII sobre Boleta (procedimiento de 5 pasos, CAF de 5 folios, ventana de 24h — ver
+> §0/Fase 0). Requiere su propio CAF Tipo 39, independiente de los CAF de §5.0.
+
+| Caso | Ítems | Nota |
 |---|---|---|
-| Papel de regalo | 17 | 120 |
-
-### CASO-3
-| Ítem | Cantidad | Precio Unitario con IVA |
-|---|---|---|
-| Sandwich | 2 | 1.500 |
-| Bebida | 2 | 550 |
-
-### CASO-4
-| Ítem | Cantidad | Precio Unitario con IVA |
-|---|---|---|
-| Ítem afecto 1 | 8 | 1.590 |
-| Ítem exento 2 | 2 | 1.000 |
-
-Observación del SII: *"El ítem 1 es un servicio afecto. El ítem 2 es un servicio exento."* — usar
-`indExe: 1` en la segunda línea al llamar `buildYFirmarDte`.
-
-### CASO-5
-| Ítem | Cantidad | Precio Unitario con IVA |
-|---|---|---|
-| Arroz | 5 | 700 |
-
-Observación del SII: *"Se debe informar en el XML Unidad de medida en Kg."* — usar
-`unidadMedida: 'Kg'` en la línea.
-
-### Procedimiento de certificación (correo del SII, plazo 24 horas desde la descarga del CAF)
-
-1. Obtener un CAF de boletas electrónicas con un rango de **5 folios**, en ambiente certificación.
-2. Generar las 5 boletas electrónicas (XML) con los datos de arriba, usando esos folios —
-   `buildYFirmarDte()` ya está listo para esto (ver §2.4/2.6).
-3. Enviar al SII el Set de Boletas + el **RCOF** (Reporte de Consumo de Folios) asociado, en un
-   solo archivo (sobre), vía UPLOAD/Web/automatizado en ambiente certificación (Fase 1C, §4.1).
-4. Solicitar revisión del Set enviado, informando el **track ID** en la sección de Boletas
-   Electrónicas del sitio del SII.
-5. Si se recibe el V°B°, proceder con la **Declaración de Cumplimiento**. Si no, corregir según
-   el diagnóstico recibido por correo y repetir.
-
-**Importante — orden de ejecución para no perder el plazo:** el cliente SOAP (Fase 1C) debe estar
-listo y probado contra `maullin.sii.cl` **antes** de descargar el CAF — el plazo de 24h corre
-desde la descarga, no desde que se empieza a trabajar. **Esto ya se cumplió** (§4.1): el motor de
-firma/timbre (Fase 1B) y la autenticación contra el SII real (Fase 1C, semilla+token) están
-probados. Queda pendiente solo la parte que sí requiere folios (`enviarSetDte`, probarla con una
-prueba Tipo B antes de gastar folios reales, §2.7).
-
-### Cómo ejecutar los 5 casos con lo ya construido (sin escribir código nuevo)
-
-El sistema ya tiene todo lo necesario en el frontend — la emisión real toma el receptor
-**persistido en el proyecto**, no un valor suelto del formulario, así que el flujo es:
-
-1. Insertar el CAF descargado en `dte_caf` (a mano, `INSERT INTO dte_caf (...)`, §4.4).
-2. Crear un proyecto de prueba dedicado en Ingresos (ej. "SII — Certificación").
-3. Para cada CASO-N: abrir el modal "Emitir Documento Tributario" en ese proyecto → editar los
-   campos de receptor con los datos del caso → **"Guardar estos datos en el proyecto"** → cargar
-   el/los ítem(s) de detalle con cantidad/precio del caso → **"Emitir DTE"**.
-4. Repetir para los 5 casos, cambiando receptor + detalle antes de cada uno.
-5. Cada emisión persiste en `dte_documentos` (visible en la vista **Documentos Tributarios**,
-   §4.3) con folio y Track ID. Usar el botón **"Consultar estado en el SII"** ahí mismo para
-   confirmar aceptación sin esperar el cron horario.
-6. Confirmar además en el propio portal del SII (con el mismo certificado) que cada Track ID
-   quedó aceptado — no depender solo de `consultarEstadoEnvio` para esta primera certificación,
-   ya que esa función no está probada contra el SII real todavía (§4.1).
+| 1 | Cambio de aceite 1×19.900; Alineación y balanceo 1×9.900 | — |
+| 2 | Papel de regalo 17×120 | — |
+| 3 | Sandwich 2×1.500; Bebida 2×550 | — |
+| 4 | Ítem afecto 1 8×1.590; Ítem exento 2 2×1.000 | `indExe: 1` en la línea exenta |
+| 5 | Arroz 5×700 | `unidadMedida: 'Kg'` |
 
 ---
 
@@ -448,11 +563,12 @@ El sistema ya tiene todo lo necesario en el frontend — la emisión real toma e
 ### Fase 0 — Requisitos
 - [x] Certificado digital
 - [x] Registro como emisor DTE
-- [ ] Solicitar CAF Tipo 39 (boletas) — bloque de 5 folios para el Set de Pruebas. **Todo lo demás
-      ya está listo y probado** (ver §5) — es el próximo paso pendiente, sin bloqueo técnico.
-- [ ] Solicitar CAF Tipo 33 (facturas) — bloque de 50, después de aprobar boletas
-- [x] Guardar archivos `.pfx` en lugar seguro (VPS, fuera de git, permisos 600) — CAF: pendiente
-      hasta descargarlo
+- [x] **CAF Tipo 39 (boletas) — solicitado, descargado y cargado** (2026-07-19, 5 folios,
+      certificación).
+- [x] **CAF Tipo 33 (facturas), 61 (NC) y 56 (ND) — solicitados, descargados y cargados**
+      (2026-07-19, 5 folios cada uno, certificación).
+- [ ] CAF Tipo 52/34 (Guía Despacho/Factura Exenta) y el resto de tipos opcionales — no priorizado.
+- [x] Guardar archivos `.pfx` y CAF en lugar seguro (VPS, fuera de git, permisos 600) — ver §4.4.
 
 ### Etapa 1 — Formulario/PDF borrador
 - [x] Completa y desplegada en producción
@@ -487,11 +603,17 @@ El sistema ya tiene todo lo necesario en el frontend — la emisión real toma e
 - [ ] Conectar el botón "Factura" del Cockpit al endpoint real (hoy solo genera el borrador)
 
 ### Fase 4 — Certificación con el SII
-- [ ] Descargar CAF Tipo 39 (5 folios) — inicia la ventana de 24h (todo lo demás ya está listo)
-- [ ] Insertar el CAF en `dte_caf` (§4.4)
-- [ ] Generar y enviar el Set de Pruebas completo (§5, workflow ya documentado) + RCOF
-- [ ] Reportar track ID, obtener V°B°, Declaración de Cumplimiento
-- [ ] Repetir para Factura (Tipo 33)
+- [x] Descargar CAF Tipo 39/33/61/56 (5 folios c/u) — ventana de 24h corriendo desde 2026-07-19
+- [x] Insertar los 4 CAF en `dte_caf` (§4.4) — ids 1-4
+- [ ] Prueba Tipo B (script desechable) con CAF real antes de gastar folios en los casos reales —
+      nunca se ha confirmado un `enviarSetDte` aceptado de verdad (solo el rechazo esperado con
+      CAF sintético, §2.7/§4.1)
+- [ ] Generar y enviar el Set de Boleta (§5.12, 5 casos) + RCOF
+- [ ] Generar y enviar los 8 casos del SET BASICO (§5.1, Factura+NC+ND) — requiere script
+      desechable que llame `buildYFirmarDte`/`siiClient` directo con `referencias`/
+      `descuentosGlobales`, ya que `dteService.emitirDte` todavía no los soporta (ver más abajo)
+- [ ] Reportar track ID de cada envío, obtener V°B°, Declaración de Cumplimiento (por separado
+      para Boleta y para el SET BASICO — son certificaciones independientes)
 - [ ] Cambiar a ambiente `produccion`
 - [ ] Emitir boleta/factura real de prueba, verificar folio en `sii.cl`, confirmar email con PDF
 
@@ -521,7 +643,8 @@ El sistema ya tiene todo lo necesario en el frontend — la emisión real toma e
 
 ---
 
-*Documento actualizado tras probar la autenticación (semilla+token) contra el SII real
-(`maullin.sii.cl`, certificación) con el certificado digital real, y tras agregar la vista
-"Documentos Tributarios" para tener control del historial de emisiones. Próximo paso: descargar
-el CAF Tipo 39 (§0, §5) — todo lo demás está construido, desplegado y verificado.*
+*Documento actualizado tras recibir el nuevo Set de Pruebas oficial del SII (2026-07-18, §5),
+que reemplaza al de Boleta Electrónica y amplía el alcance a Factura + NC/ND + Guía de Despacho +
+Factura Exenta + Documentos de Exportación + Liquidación + Factura de Compra. Próximo paso:
+decidir qué sub-set abordar primero y cerrar la brecha de implementación (§5.11) antes de pedir
+los CAF correspondientes.*

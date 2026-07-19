@@ -18,9 +18,19 @@ const tag = (name, value) => (value === undefined || value === null || value ===
  * @param {Array<{ tipoDte: number, cantidad: number }>} params.subtotales
  */
 export function buildCaratula({ rutEmisor, rutEnvia, rutReceptor = '60803000-K', fchResol, nroResol = 0, subtotales }) {
+    if (!fchResol) {
+        // Obligatorio por schema (cvc-complex-type.2.4.a), incluso con NroResol=0 (autorización
+        // por folios, sin número de resolución) — confirmado contra el validador real del SII
+        // al recibir "Invalid content was found starting with element 'NroResol'. One of
+        // '{FchResol}' is expected" en la primera prueba real (2026-07-19).
+        throw new Error('buildCaratula requiere fchResol (fecha de autorización SII), incluso con nroResol=0');
+    }
     const timestamp = new Date().toISOString().slice(0, 19);
+    // OJO: dentro de <SubTotDTE> el tag correcto es <TpoDTE>, no <TipoDTE> (ese nombre solo es
+    // correcto dentro de <IdDoc> del propio DTE) — confirmado contra el validador real del SII
+    // ("Invalid content... One of '{TpoDTE}' is expected", 2026-07-19).
     const subtotalesXml = subtotales
-        .map((s) => `<SubTotDTE>\n${tag('TipoDTE', s.tipoDte)}${tag('NroDTE', s.cantidad)}</SubTotDTE>\n`)
+        .map((s) => `<SubTotDTE>\n${tag('TpoDTE', s.tipoDte)}${tag('NroDTE', s.cantidad)}</SubTotDTE>\n`)
         .join('');
 
     return (
@@ -45,7 +55,13 @@ export function buildCaratula({ rutEmisor, rutEnvia, rutReceptor = '60803000-K',
  * @param {string} envioId - id único del envío, referenciado por la firma del sobre.
  */
 export function buildYFirmarEnvioDte(caratulaXml, documentosFirmadosXml, pemData, envioId = 'SetDoc') {
-    const setDte = `<SetDTE ID="${envioId}">\n${caratulaXml}\n${documentosFirmadosXml.join('\n')}\n</SetDTE>`;
+    // Cada documento (buildYFirmarDte().dteXmlFirmado) trae su propio prólogo <?xml ...?> porque
+    // también puede usarse standalone — pero un <?xml?> (processing instruction) solo es válido al
+    // inicio absoluto de un documento XML, nunca anidado dentro de otro. Hay que quitarlo antes de
+    // insertarlo en el sobre. Confirmado contra el validador real del SII ("The processing
+    // instruction target matching '[xX][mM][lL]' is not allowed", 2026-07-19).
+    const documentosSinProlog = documentosFirmadosXml.map((xml) => xml.replace(/^\s*<\?xml[^>]*\?>\s*/, ''));
+    const setDte = `<SetDTE ID="${envioId}">\n${caratulaXml}\n${documentosSinProlog.join('\n')}\n</SetDTE>`;
 
     const envioXml =
         `<?xml version="1.0" encoding="ISO-8859-1"?>\n` +

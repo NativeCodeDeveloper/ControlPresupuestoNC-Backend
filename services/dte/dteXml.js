@@ -3,11 +3,15 @@ import { signDocumento } from './signXml.js';
 
 // Generación del XML del DTE completo (Encabezado + Detalle + Timbre + Firma).
 // Boleta Electrónica (39): SII "Formato Boletas Electrónicas de Ventas y Servicios" v4.00 (2023-06-01).
-// Factura Electrónica (33): SII "Formato Documentos Tributarios Electrónicos" v2.5 (2026-02).
+// Factura Electrónica (33) y Nota de Crédito/Débito (61/56): SII "Formato Documentos Tributarios
+// Electrónicos" v2.5 (2026-02).
 //
 // Alcance actual: boleta/factura afecta simple, servicios (sin ticket de espectáculo, sin
-// descuentos/recargos globales, sin referencias a otros documentos, sin exportación). Cubre lo
-// que NativeCode necesita para facturar sus propios servicios y el Set de Pruebas del SII.
+// exportación); factura además soporta descuento/recargo global (<DscRcGlobal>, solo sobre el
+// neto afecto) y Nota de Crédito/Débito con referencia a otro documento (<Referencia>). Cubre lo
+// que NativeCode necesita para facturar sus propios servicios y el Set de Pruebas del SII
+// (SET BASICO). Sin Guía de Despacho, Factura Exenta, Exportación, Liquidación ni Factura de
+// Compra todavía — ver INTEGRACION_DTE.md §5.11.
 
 const XML_ENTITIES = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' };
 // Trunca antes de escapar (no al revés) para no cortar una entidad XML a la mitad.
@@ -51,8 +55,14 @@ export function computeMontosBoleta(detalle, tasaIva = 0.19) {
     return { montoNeto, iva, montoExento, montoTotal };
 }
 
-/** Factura (33): precios de línea son netos (sin IVA); IVA se calcula sobre el neto. */
-export function computeMontosFactura(detalle, tasaIva = 0.19) {
+/**
+ * Factura (33) / Nota de Crédito/Débito (61/56): precios de línea son netos (sin IVA); IVA se
+ * calcula sobre el neto. `descuentosGlobales` (opcional, default sin efecto) aplica cada ajuste
+ * sobre el neto afecto acumulado, antes del IVA — Formato DTE v2.5 <DscRcGlobal>. Ej.: Set de
+ * Pruebas SII caso 4959502-4, "descuento global 15% solo sobre ítems afectos".
+ * @param {Array} descuentosGlobales - [{ tpoMov: 'D'|'R', tpoValor: '%'|'$', valorDR }]
+ */
+export function computeMontosFactura(detalle, tasaIva = 0.19, descuentosGlobales = []) {
     let montoNeto = 0;
     let montoExento = 0;
     for (const linea of detalle) {
@@ -62,6 +72,12 @@ export function computeMontosFactura(detalle, tasaIva = 0.19) {
         const montoLinea = Math.round(cantidad * precioUnitario - descuento);
         if (linea.indExe === 1) montoExento += montoLinea;
         else montoNeto += montoLinea;
+    }
+    for (const global of descuentosGlobales) {
+        const valor = Number(global.valorDR) || 0;
+        const signo = global.tpoMov === 'R' ? 1 : -1;
+        const ajuste = global.tpoValor === '$' ? valor : Math.round(montoNeto * (valor / 100));
+        montoNeto += signo * ajuste;
     }
     const iva = Math.round(montoNeto * tasaIva);
     const montoTotal = montoNeto + iva + montoExento;
@@ -135,6 +151,49 @@ function buildDetalle(detalle) {
 }
 
 /**
+ * Descuento/recargo global (Formato DTE v2.5 <DscRcGlobal>) — cero o más bloques <DR>. Devuelve
+ * '' si no hay descuentos globales, para no alterar el XML de documentos que no los usan.
+ * @param {Array} descuentosGlobales - [{ tpoMov: 'D'|'R', glosaDR, tpoValor: '%'|'$', valorDR, indExeDR }]
+ */
+function buildDscRcGlobal(descuentosGlobales) {
+    if (!descuentosGlobales || descuentosGlobales.length === 0) return '';
+    const drs = descuentosGlobales
+        .map((g, i) =>
+            `<DR>\n` +
+            tag('NroLinDR', i + 1) +
+            tag('TpoMov', g.tpoMov) +
+            (g.glosaDR ? tag('GlosaDR', escapeXml(g.glosaDR, 40)) : '') +
+            tag('TpoValor', g.tpoValor) +
+            tag('ValorDR', g.valorDR) +
+            (g.indExeDR ? tag('IndExeDR', g.indExeDR) : '') +
+            `</DR>\n`
+        )
+        .join('');
+    return `<DscRcGlobal>\n${drs}</DscRcGlobal>\n`;
+}
+
+/**
+ * Referencia a otro DTE (Formato DTE v2.5 <Referencia>) — usada por Nota de Crédito/Débito (61/56)
+ * para apuntar al documento que corrigen/anulan. Devuelve '' si no hay referencias.
+ * @param {Array} referencias - [{ tpoDocRef, folioRef, fchRef, codRef, razonRef }]
+ */
+function buildReferencia(referencias) {
+    if (!referencias || referencias.length === 0) return '';
+    return referencias
+        .map((r, i) =>
+            `<Referencia>\n` +
+            tag('NroLinRef', i + 1) +
+            tag('TpoDocRef', r.tpoDocRef) +
+            tag('FolioRef', r.folioRef) +
+            tag('FchRef', r.fchRef) +
+            (r.codRef !== undefined && r.codRef !== null && r.codRef !== '' ? tag('CodRef', r.codRef) : '') +
+            (r.razonRef ? tag('RazonRef', escapeXml(r.razonRef, 90)) : '') +
+            `</Referencia>\n`
+        )
+        .join('');
+}
+
+/**
  * Arma y firma el DTE completo: Encabezado + Detalle + Timbre Electrónico (TED, ver ted.js) +
  * TmstFirma, envuelto en <DTE><Documento ID="...">...</Documento></DTE>, y firmado con XMLDSig
  * estándar usando el certificado del emisor (ver signXml.js).
@@ -146,14 +205,21 @@ function buildDetalle(detalle) {
  * @param {Object} params.emisor - { rut, razonSocial, giro, direccion, comuna, acteco }
  * @param {Object} params.receptor - { rut, nombre, giro, direccion, comuna }
  * @param {Array}  params.detalle - [{ nombre, descripcion, cantidad, unidadMedida, precioUnitario, descuentoMonto, indExe }]
+ * @param {Array}  [params.descuentosGlobales] - ver `computeMontosFactura` (ignorado en Boleta)
+ * @param {Array}  [params.referencias] - [{ tpoDocRef, folioRef, fchRef, codRef, razonRef }], para Nota de Crédito/Débito (61/56)
  * @param {Object} params.caf - resultado de ted.parseCaf(cafXml)
  * @param {{ certPem: string, privateKeyPem: string, certificate: import('node-forge').pki.Certificate }} params.pemData
  * @param {string} [params.fechaVencimiento]
  * @returns {{ documentoId: string, montos: object, dteXmlFirmado: string }}
  */
-export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, caf, pemData }) {
-    if (!Array.isArray(detalle) || detalle.length === 0) {
-        throw new Error('El documento requiere al menos una línea de detalle');
+export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor, receptor, detalle, descuentosGlobales = [], referencias = [], caf, pemData }) {
+    if (!Array.isArray(detalle)) {
+        throw new Error('El documento requiere un arreglo de detalle');
+    }
+    if (detalle.length === 0 && referencias.length === 0) {
+        // Una Nota de Crédito/Débito que solo corrige texto (ej. "corrige giro del receptor",
+        // "anula factura") puede no traer líneas de detalle, siempre que traiga una referencia.
+        throw new Error('El documento requiere al menos una línea de detalle, o una referencia (Nota de Crédito/Débito)');
     }
     if (!emisor?.rut || !emisor?.razonSocial) {
         throw new Error('Faltan datos del emisor (RUT y razón social son obligatorios)');
@@ -168,7 +234,9 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
     const emisorNorm = { ...emisor, rut: normalizeRut(emisor.rut) };
     const receptorNorm = { ...receptor, rut: normalizeRut(receptor.rut) || '66666666-6' };
 
-    const montos = tipoDte === 39 || tipoDte === 41 ? computeMontosBoleta(detalle) : computeMontosFactura(detalle);
+    const montos = tipoDte === 39 || tipoDte === 41
+        ? computeMontosBoleta(detalle)
+        : computeMontosFactura(detalle, 0.19, descuentosGlobales);
     const timestamp = new Date().toISOString().slice(0, 19);
     const documentoId = `F${String(folio).padStart(10, '0')}T${tipoDte}`;
 
@@ -179,17 +247,21 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
         rutReceptor: receptorNorm.rut,
         razonSocialReceptor: receptorNorm.nombre,
         montoTotal: montos.montoTotal,
-        primerItem: detalle[0]?.nombre || '',
+        primerItem: detalle[0]?.nombre || referencias[0]?.razonRef || '',
         timestamp,
     });
 
     const encabezado = buildEncabezado({ tipoDte, folio, fechaEmision, fechaVencimiento, emisor: emisorNorm, receptor: receptorNorm, montos });
     const detalleXml = buildDetalle(detalle);
+    const dscRcGlobalXml = buildDscRcGlobal(descuentosGlobales);
+    const referenciaXml = buildReferencia(referencias);
 
     const documentoXml =
         `<Documento ID="${documentoId}">\n` +
         encabezado +
         detalleXml +
+        dscRcGlobalXml +
+        referenciaXml +
         `${ted}\n` +
         tag('TmstFirma', timestamp) +
         `</Documento>`;

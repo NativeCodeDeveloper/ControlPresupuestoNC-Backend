@@ -37,6 +37,21 @@ export function pfxToPem(pfxBuffer, password) {
     };
 }
 
+/**
+ * Extrae el RUT del titular de un certificado digital chileno desde su `subject.serialNumber`
+ * (OID 2.5.4.5), donde los certificados de FirmaElectronica.cl/Acepta/etc. codifican el RUN.
+ * Necesario porque `<RutEnvia>` en la Carátula del sobre EnvioDTE debe ser el RUT de quien firma
+ * (el titular del certificado), no necesariamente el de la empresa emisora (`<RutEmisor>`) —
+ * pueden ser personas distintas (ej. un representante autorizado firmando por la empresa).
+ * @param {forge.pki.Certificate} certificate
+ * @returns {string} RUT normalizado (`NNNNNNNN-D`)
+ */
+export function extraerRutCertificado(certificate) {
+    const attr = certificate.subject.attributes.find((a) => a.name === 'serialNumber' || a.type === '2.5.4.5');
+    if (!attr?.value) throw new Error('No se pudo extraer el RUT del titular desde el certificado (subject.serialNumber)');
+    return String(attr.value).trim();
+}
+
 // Convierte un forge.jsbn.BigInteger a base64 (arreglo de bytes big-endian, entero sin signo) —
 // misma convención que usa el SII para <Modulus>/<Exponent> (ver ted.js parseCaf, campo RSAPK).
 function bigIntToBase64(bigInt) {
