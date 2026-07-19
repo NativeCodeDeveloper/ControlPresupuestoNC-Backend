@@ -19,8 +19,12 @@ const tag = (name, value) => (value === undefined || value === null || value ===
  * @param {string} params.rutEmisor
  * @param {string} params.rutEnvia - RUT de la persona/firmante que envía (puede ser el mismo emisor)
  * @param {string} [params.rutReceptor='60803000-K'] - RUT del SII como receptor del envío
- * @param {string} params.fchResol - fecha de la resolución SII que autoriza al emisor (AAAA-MM-DD)
- * @param {number} params.nroResol - número de la resolución SII (0 si es autorización por folios)
+ * @param {string} params.fchResol - fecha de la Resolución SII que autoriza al emisor (AAAA-MM-DD).
+ *   Es la Resolución real del contribuyente (visible en "Actualización de datos empresa
+ *   autorizada" del portal SII), NO necesariamente 0/hoy — confirmar con el usuario, no asumir
+ *   "0 = autorización por folios" (NATIVECODE SPA, por ejemplo, tiene Resolución N°99 de 2014).
+ * @param {number} [params.nroResol=0] - número de la Resolución SII (0 solo si de verdad no hay
+ *   una Resolución numerada asignada al contribuyente)
  * @param {Array<{ tipoDte: number, cantidad: number }>} params.subtotales
  */
 export function buildCaratula({ rutEmisor, rutEnvia, rutReceptor = '60803000-K', fchResol, nroResol = 0, subtotales }) {
