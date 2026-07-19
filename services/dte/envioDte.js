@@ -2,8 +2,14 @@ import { signDocumento } from './signXml.js';
 
 // Sobre de envío (EnvioDTE): agrupa uno o más DTE ya firmados para enviarlos al SII en un solo
 // archivo. Referencia: Instructivo Técnico Factura Electrónica, Anexo 3.2/3.3.
-// Máximo 2.000 documentos por envío (Factura, Anexo 3.3.4) / 500 boletas por envío (Formato
-// Boletas Electrónicas v4.00, sección 2).
+// Máximo 2.000 documentos por envío (Factura, Anexo 3.3.4).
+//
+// IMPORTANTE (confirmado contra el validador de schema real del SII, 2026-07-19): este sobre
+// <EnvioDTE> es válido para TipoDTE ∈ {33,34,43,46,52,56,61,110,111,112} — NO para Boleta (39).
+// El schema del SII rechaza explícitamente TipoDTE=39 aquí ("cvc-enumeration-valid"). Boleta
+// Electrónica usa un sobre y trámite de envío separados (<EnvioBOLETA>, Formato Boletas
+// Electrónicas v4.00) — todavía no implementado en este archivo. No usar `buildYFirmarEnvioDte`
+// para Boleta hasta construir ese sobre específico.
 
 const tag = (name, value) => (value === undefined || value === null || value === '' ? '' : `<${name}>${value}</${name}>\n`);
 
@@ -40,7 +46,7 @@ export function buildCaratula({ rutEmisor, rutEnvia, rutReceptor = '60803000-K',
         tag('RutReceptor', rutReceptor) +
         tag('FchResol', fchResol) +
         tag('NroResol', nroResol) +
-        tag('TmsFirmaEnv', timestamp) +
+        tag('TmstFirmaEnv', timestamp) +
         subtotalesXml +
         `</Caratula>`
     );

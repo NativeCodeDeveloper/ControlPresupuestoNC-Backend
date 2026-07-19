@@ -443,6 +443,7 @@ console.log('\n[9] Regresión — sobre EnvioDTE: FchResol obligatorio, TpoDTE, 
     });
     check('la Carátula incluye <FchResol> con el valor pasado', caratula.includes('<FchResol>2026-07-18</FchResol>'));
     check('<SubTotDTE> usa <TpoDTE>, no <TipoDTE>', caratula.includes('<TpoDTE>39</TpoDTE>') && !caratula.includes('<TipoDTE>39</TipoDTE>'));
+    check('la Carátula usa <TmstFirmaEnv>, no <TmsFirmaEnv>', /<TmstFirmaEnv>/.test(caratula) && !/<TmsFirmaEnv>/.test(caratula));
     const ordenCorrecto = caratula.indexOf('<RutReceptor>') < caratula.indexOf('<FchResol>') && caratula.indexOf('<FchResol>') < caratula.indexOf('<NroResol>');
     check('orden de la Carátula: RutReceptor, FchResol, NroResol', ordenCorrecto);
 

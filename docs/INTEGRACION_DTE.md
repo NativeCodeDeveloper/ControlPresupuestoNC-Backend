@@ -291,6 +291,34 @@ esa primera prueba se encontró y arregló un bug real: `extractTag()` no recono
 namespace (`ns1:`) que el SII antepone a los tags de respuesta — ver §2.7 para el detalle y la
 lección de por qué `verify.js` (Tipo A) no lo pudo atrapar.
 
+**Primera emisión real de verdad — Boleta caso 1, 2026-07-19 (folio #1 del CAF 39 consumido,
+`dte_documentos.id=1`, rechazado):** el envío automatizado (`enviarSetDte`) devolvió la misma
+página HTML genérica de siempre, sin detalle. Se diagnosticó reenviando el mismo sobre firmado
+manualmente por el portal web del SII ("Envío de DTE y libros de compras y ventas"), que sí da
+detalle de schema — revelando **4 bugs reales** en `envioDte.js`, ninguno detectable por
+`verify.js` porque nunca probaba ese archivo contra un validador de schema real:
+1. `<FchResol>` faltaba en la Carátula (`dteService.js` nunca lo pasaba) — obligatorio incluso con
+   `NroResol=0` (autorización por folios). **Arreglado**: `buildCaratula` ahora lanza si falta.
+2. `<SubTotDTE>` usaba el tag `<TipoDTE>` en vez de `<TpoDTE>` (ese nombre solo es correcto dentro
+   de `<IdDoc>` del propio DTE). **Arreglado**.
+3. `<TmsFirmaEnv>` debía ser `<TmstFirmaEnv>` (typo, falta una "t"). **Arreglado**.
+4. Cada DTE trae su propio prólogo `<?xml ...?>`, que quedaba anidado dentro de `<EnvioDTE>` —
+   inválido (un `<?xml?>` solo puede ir al inicio absoluto de un documento). **Arreglado**:
+   `buildYFirmarEnvioDte` ahora lo quita antes de insertar el documento en el sobre.
+
+Además se corrigió `<RutEnvia>` (antes usaba el RUT de la empresa; ahora usa el RUT del **titular
+del certificado** — pueden ser personas distintas, nueva `extraerRutCertificado()` en
+`signXml.js`), aunque el validador de schema no lo marcó como error (es una validación semántica
+del SII, no de schema, así que no se pudo confirmar/descartar por esta vía).
+
+**Bloqueador nuevo, específico de Boleta:** con los 4 bugs arriba corregidos, el schema real
+todavía rechaza `TipoDTE=39` dentro de `<EnvioDTE>` — la enumeración permitida es
+`[33, 34, 43, 46, 52, 56, 61, 110, 111, 112]`, sin Boleta. **Boleta Electrónica requiere su propio
+sobre `<EnvioBOLETA>`** (Formato Boletas Electrónicas v4.00), no implementado todavía — ver §5.12.
+Factura (33) y el resto de tipos del Set de §5.0 **sí** deberían funcionar con el `<EnvioDTE>` ya
+arreglado — pendiente de confirmar con una emisión real de Factura (folio #1 del CAF 33, aún sin
+usar).
+
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
 Tablas creadas en producción (`migration_dte_documentos.sql`, ya ejecutada): `dte_documentos`,
@@ -547,6 +575,16 @@ si se aborda también Factura de Compra / Exportación / Liquidación — todo e
 > trámites de certificación distintos, Boleta nunca se volvió a solicitar). Confirmado por correo
 > propio del SII sobre Boleta (procedimiento de 5 pasos, CAF de 5 folios, ventana de 24h — ver
 > §0/Fase 0). Requiere su propio CAF Tipo 39, independiente de los CAF de §5.0.
+
+> **BLOQUEADOR encontrado 2026-07-19 (primera prueba real, ver §4.1):** Boleta necesita su propio
+> sobre de envío (`<EnvioBOLETA>`), **no** `<EnvioDTE>`. El validador de schema real del SII
+> rechaza explícitamente `TipoDTE=39` dentro de `<EnvioDTE>` ("cvc-enumeration-valid... enumeration
+> [33, 34, 43, 46, 52, 56, 61, 110, 111, 112]" — 39 no está). Esto es consistente con que el propio
+> correo de Boleta dirige a informar el Track ID en un **"apartado de Boletas electrónicas"**
+> separado del de Factura Electrónica. `envioDte.js` hoy solo construye `<EnvioDTE>` — **falta
+> construir el sobre `<EnvioBOLETA>`** (Formato Boletas Electrónicas v4.00) antes de poder emitir
+> boletas reales contra el SII. Motor de firma/TED de la Boleta en sí (`dteXml.js`) no se ve
+> afectado — el problema es solo el sobre de envío.
 
 | Caso | Ítems | Nota |
 |---|---|---|
