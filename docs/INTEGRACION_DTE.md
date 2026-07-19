@@ -429,13 +429,48 @@ aprueba todas las pruebas y declara cumplimiento. Esto es casi con certeza la ca
 se usa si `ambiente==='produccion'`. **Sin probar contra el SII real todavía** — los 5 folios del
 CAF de Factura están agotados; hace falta un CAF nuevo para confirmar.
 
-**Estado al 2026-07-19, fin de esta ronda de pruebas:** con los bugs #8 y #9 confirmados en vivo
-(evidencia dura: el estado real cambió de código en cada fix, `106 → RFR → RCT`, nunca fue una
-suposición), y el bug #10 respaldado por una cita textual del manual oficial (pendiente de
-confirmación real). **Siguiente paso**: pedir un CAF nuevo de Factura (33) y probar el fix del bug
-#10 — con alta confianza de que sea el último bloqueador, dado que cada corrección real hasta
-ahora ha cambiado el código de rechazo a uno más profundo en el pipeline de validación del SII
-(firma → carátula), nunca ha vuelto a un código anterior.
+**Confirmado con CAF nuevo (id=7, folios 1-5, 2026-07-19) — el bug #10 SÍ era real:** folio #1,
+Track ID `0253169338`, subida aceptada y **`ESTADO=EPR "Envío Procesado"`** — la primera vez en
+toda la sesión que el sobre pasa completo (schema + firma de envío + carátula). Detalle del envío:
+`INFORMADOS=1, ACEPTADOS=0, RECHAZADOS=1` — el documento individual fue rechazado, un nivel más
+profundo que antes. Vía el portal ("Consultas de recepción de DTE"), el detalle exacto:
+
+```
+Folio 1, Tipo 33, RCH - DTE Rechazado
+    (DTE-3-505) Firma DTE Incorrecta (Rechaza DTE)
+```
+
+Este es un código **distinto** a `RFR` (que es del sobre completo) — corresponde específicamente a
+la firma XMLDSig del `<Documento>` individual (no la del `<SetDTE>`, que si pasó). Se investigó a
+fondo antes de gastar más folios:
+
+- Se descargó el `xml_firmado` real de este intento (`dte_documentos.id=13`) desde la BD y se
+  re-verificaron **ambas firmas (Documento y SetDTE) contra el contenido exacto y real enviado**
+  (no datos sintéticos): **ambas dan válidas**, con `validationErrors` vacío.
+- Se confirmó que la conversión a bytes ISO-8859-1 (`xmlComoBytesIso88591`) es un round-trip
+  perfecto para este XML real (decodificar los bytes enviados reproduce el string original
+  exacto, carácter por carácter).
+- Búsqueda de "DTE-3-505" en fuentes externas (blogs de desarrolladores .Net/Java que integran
+  con el SII) confirma que es un código real y conocido de "Firma DTE Incorrecta" a nivel de
+  documento individual — un código *distinto* de "(TED-2-510) Firma Timbre Electrónico
+  Incorrecta" (que sería sobre el TED, no la firma XMLDSig) — y que, según una fuente, "este error
+  no se refiere a quien firma el documento, sino a la propia firma electrónica" y suele deberse a
+  que "se cambió la información contenida en el documento" después de firmar. Nosotros no
+  reinsertamos nada después de firmar (arquitectura "firmar en sitio", bug #6) y verificamos
+  offline que el contenido no cambia entre firma y envío.
+
+**Conclusión de esta ronda:** con evidencia dura de que ambas firmas son matemáticamente válidas
+sobre el contenido real y exacto transmitido, y que el problema es específico de la firma del
+`<Documento>` (no del `<SetDTE>`, no del TED, no del certificado en sí, no de permisos, no de la
+carátula — todo eso ya se descartó con evidencia concreta) — el resto de las hipótesis razonables
+requieren visibilidad de logs del lado del SII que no tenemos (ej. si su validador de firma para
+documentos individuales usa una implementación de canonicalización distinta a la del sobre
+completo, o si hay algún chequeo adicional de cadena de confianza del certificado que solo se
+aplica en esta validación más profunda). **Se agotaron los 5 folios de este CAF** (folio #1
+rechazado; folios #2-5 no se probaron para no gastarlos sin una hipótesis nueva). **Siguiente
+paso recomendado**: escalar a Mesa de Ayuda del SII con esta evidencia específica y mucho más
+precisa que la anterior (Track ID `0253169338`, código exacto `DTE-3-505`, y la prueba de que
+ambas firmas son válidas) — no seguir pidiendo CAF nuevos para seguir probando a ciegas.
 
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
