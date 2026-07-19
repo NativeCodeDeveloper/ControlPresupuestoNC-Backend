@@ -165,7 +165,16 @@ export async function enviarSetDte({ envioXmlFirmado, rutEnvia, dvEnvia, rutComp
 
     const res = await fetch(url, {
         method: 'POST',
-        headers: { Cookie: `TOKEN=${token}` },
+        headers: {
+            Cookie: `TOKEN=${token}`,
+            // El User-Agent DEBE incluir "PROG 1.0" para que el SII responda con el XML
+            // estructurado (<RECEPCIONDTE><STATUS>/<TRACKID>) en vez de la página HTML genérica
+            // para navegadores -- documentado en el Manual Desarrollador Externo "Envío
+            // Automático DTE" (OI2003_UPDTE_MDE), Figura 2.3. Confirmado que sin este header
+            // siempre se recibe HTML sin STATUS ni TRACKID, sin importar si el documento es
+            // válido (2026-07-19).
+            'User-Agent': 'Mozilla/4.0 (compatible; PROG 1.0; Windows NT 5.0)',
+        },
         body: form,
     });
     const text = await res.text();
