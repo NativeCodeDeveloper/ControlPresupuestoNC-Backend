@@ -257,7 +257,12 @@ export function buildYFirmarDte({ tipoDte, folio, fechaEmision, fechaVencimiento
     const referenciaXml = buildReferencia(referencias);
 
     const documentoXml =
-        `<Documento ID="${documentoId}">\n` +
+        // xmlns declarado directamente aquí (no solo en <DTE>) -- confirmado bug real de
+        // xml-crypto (2026-07-19): cuando el elemento referenciado por la firma hereda el
+        // namespace de un ancestro en vez de declararlo él mismo, el digest calculado al firmar
+        // no coincide con el que se recalcula al verificar ("Rechazado por Error en Firma" en el
+        // SII real) -- independiente de si se usa C14N normal o exclusivo. Ver services/dte/verify.js §4.
+        `<Documento xmlns="http://www.sii.cl/SiiDte" ID="${documentoId}">\n` +
         encabezado +
         detalleXml +
         dscRcGlobalXml +

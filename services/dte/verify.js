@@ -194,7 +194,9 @@ console.log('\n[4] Firma XMLDSig del DTE completo (round-trip, certificado autof
     const pemData = generarPfxDePrueba();
     check('pfxToPem() extrae llave privada y certificado', Boolean(pemData.privateKeyPem && pemData.certPem));
 
-    const xml = '<DTE version="1.0"><Documento ID="TESTDOC1"><Encabezado><IdDoc><TipoDTE>39</TipoDTE></IdDoc></Encabezado></Documento></DTE>';
+    // El namespace va declarado directamente en <Documento> (el elemento referenciado por la
+    // firma), no solo en el <DTE> ancestro -- ver el bug real explicado abajo.
+    const xml = '<DTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><Documento xmlns="http://www.sii.cl/SiiDte" ID="TESTDOC1"><Encabezado><IdDoc><TipoDTE>39</TipoDTE></IdDoc></Encabezado></Documento></DTE>';
     const signedXml = signDocumento(xml, pemData, 'TESTDOC1');
     check('signDocumento() inserta un elemento <Signature>', signedXml.includes('<Signature'));
 
@@ -216,6 +218,35 @@ console.log('\n[4] Firma XMLDSig del DTE completo (round-trip, certificado autof
         console.log(`    (error verificando: ${e.message})`);
     }
     check('la firma XMLDSig es válida contra el certificado (xml-crypto.checkSignature)', isValid);
+
+    // Regresión — 2 bugs reales de firma encontrados contra el SII real (2026-07-19, Factura
+    // caso 1, folio real consumido, "Rechazado por Error en Firma"):
+    // a) si el elemento referenciado por la firma (aquí <Documento>) HEREDA el namespace de un
+    //    ancestro en vez de declararlo él mismo, el digest calculado al firmar no coincide con el
+    //    recalculado al verificar -- pasa igual con C14N normal o exclusivo, el problema es la
+    //    herencia, no el algoritmo. Arreglado declarando xmlns directamente en <Documento> y en
+    //    <SetDTE> (envioDte.js).
+    // b) un namespace adicional no usado en el ancestro (`xmlns:xsi`/`xsi:schemaLocation` en
+    //    <EnvioDTE>) también rompe el digest del <SetDTE> firmado que contiene -- ni la
+    //    canonicalización exclusiva lo resuelve con xml-crypto. Arreglado quitando esos atributos
+    //    de <EnvioDTE> (son solo un hint opcional, no necesarios para que el SII procese el sobre).
+    // Este test simula la reinserción dentro de <EnvioDTE> para que no se repita sin red ni CAF real.
+    const signedXmlSinProlog = signedXml.replace(/^\s*<\?xml[^>]*\?>\s*/, '');
+    const envuelto = `<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0"><SetDTE xmlns="http://www.sii.cl/SiiDte" ID="SetDocTest">${signedXmlSinProlog}</SetDTE></EnvioDTE>`;
+    let esValidoReinsertado = false;
+    try {
+        const docEnvuelto = new DOMParser().parseFromString(envuelto, 'text/xml');
+        const signatureNodeEnvuelto = xpath.select(
+            "//*[local-name(.)='Signature' and namespace-uri(.)='http://www.w3.org/2000/09/xmldsig#']",
+            docEnvuelto
+        )[0];
+        const verifierEnvuelto = new SignedXml({ publicCert: pemData.certPem });
+        verifierEnvuelto.loadSignature(signatureNodeEnvuelto);
+        esValidoReinsertado = verifierEnvuelto.checkSignature(envuelto);
+    } catch (e) {
+        console.log(`    (error verificando reinsertado: ${e.message})`);
+    }
+    check('la firma sigue siendo válida al reinsertar el documento en otro contexto XML (namespaces adicionales)', esValidoReinsertado);
 }
 
 // ── 5. Pipeline completo con el CASO-1 real del Set de Pruebas del SII ──

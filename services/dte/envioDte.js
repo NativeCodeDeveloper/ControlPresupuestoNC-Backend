@@ -67,12 +67,19 @@ export function buildYFirmarEnvioDte(caratulaXml, documentosFirmadosXml, pemData
     // insertarlo en el sobre. Confirmado contra el validador real del SII ("The processing
     // instruction target matching '[xX][mM][lL]' is not allowed", 2026-07-19).
     const documentosSinProlog = documentosFirmadosXml.map((xml) => xml.replace(/^\s*<\?xml[^>]*\?>\s*/, ''));
-    const setDte = `<SetDTE ID="${envioId}">\n${caratulaXml}\n${documentosSinProlog.join('\n')}\n</SetDTE>`;
+    // xmlns declarado directamente aquí (no solo en <EnvioDTE>) -- mismo bug real de xml-crypto
+    // que en dteXml.js (ver ahí y verify.js §4): el elemento referenciado por la firma del sobre
+    // (SetDTE) debe declarar su propio namespace, no heredarlo del ancestro.
+    const setDte = `<SetDTE xmlns="http://www.sii.cl/SiiDte" ID="${envioId}">\n${caratulaXml}\n${documentosSinProlog.join('\n')}\n</SetDTE>`;
 
+    // Sin xmlns:xsi/xsi:schemaLocation aquí a propósito: son solo un hint opcional para
+    // herramientas de validación (el SII no los necesita para procesar el documento), y
+    // confirmado (2026-07-19) que rompen la firma del sobre -- es un namespace adicional en el
+    // ancestro <EnvioDTE> que xml-crypto no logra ignorar al canonicalizar el <SetDTE> firmado
+    // (ni con C14N normal ni exclusivo), causando "Rechazado por Error en Firma" en el SII real.
     const envioXml =
         `<?xml version="1.0" encoding="ISO-8859-1"?>\n` +
-        `<EnvioDTE xmlns="http://www.sii.cl/SiiDte" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" ` +
-        `xsi:schemaLocation="http://www.sii.cl/SiiDte EnvioDTE_v10.xsd" version="1.0">\n` +
+        `<EnvioDTE xmlns="http://www.sii.cl/SiiDte" version="1.0">\n` +
         setDte +
         `\n</EnvioDTE>`;
 
