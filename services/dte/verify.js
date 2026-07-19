@@ -198,6 +198,10 @@ console.log('\n[4] Firma XMLDSig del DTE completo (round-trip, certificado autof
     const signedXml = signDocumento(xml, pemData, 'TESTDOC1');
     check('signDocumento() inserta un elemento <Signature>', signedXml.includes('<Signature'));
 
+    const transformCount = (signedXml.match(/<Transform /g) || []).length;
+    check('signDocumento() usa un único <Transform> (enveloped-signature) por Reference',
+        transformCount === 1, `se encontraron ${transformCount} — el schema del SII rechaza más de uno (confirmado 2026-07-19)`);
+
     const verifier = new SignedXml({ publicCert: pemData.certPem });
     let isValid = false;
     try {

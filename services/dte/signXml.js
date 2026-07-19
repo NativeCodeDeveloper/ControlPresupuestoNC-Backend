@@ -103,9 +103,14 @@ export function signDocumento(xmlString, pemData, referenceId) {
         },
     });
 
+    // Solo el transform enveloped-signature -- confirmado contra el validador de schema real del
+    // SII (2026-07-19): con [ENVELOPED, C14N] rechazaba "Invalid content was found starting with
+    // element 'Transform'. No child element is expected at this point" (Transforms del SII solo
+    // admite un elemento). No tocar signWholeDocument (semilla) -- esa firma ya está confirmada
+    // funcionando contra el SII real con ambos transforms, es un endpoint/schema distinto.
     sig.addReference({
         xpath: `//*[@ID='${referenceId}']`,
-        transforms: [ENVELOPED, C14N],
+        transforms: [ENVELOPED],
         digestAlgorithm: SHA1,
     });
 
