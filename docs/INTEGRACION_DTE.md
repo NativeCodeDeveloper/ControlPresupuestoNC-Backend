@@ -359,10 +359,39 @@ Machuca Carrasco, RUT 19169587-9, emitido por "Acepta.com Autoridad Certificador
 Natural - G4"**) podría no estar acreditado específicamente para firma de DTE ante el SII (el
 `.pfx` solo trae el certificado hoja, sin cadena — aunque el schema del SII de todos modos solo
 permite un `<X509Certificate>` en `<X509Data>`, no una cadena, así que esto no parece ser
-arreglable agregando más certificados). **Pendiente**: confirmar con Acepta.com si este
-certificado/clase sirve para firma de Documentos Tributarios Electrónicos específicamente.
-Queda **1 folio de Factura sin usar** (folio #5) — no gastarlo hasta tener una hipótesis nueva y
-sólida que probar.
+arreglable agregando más certificados). **Descartado parcialmente**: la página del producto del
+certificado (Acepta.com) indica "Firma compatible con todas las soluciones de facturación" y
+"listo para centralizar en el portal del SII" — el certificado en sí debería servir.
+
+**Bug real #7 encontrado y arreglado (2026-07-19):** la Carátula mandaba `<NroResol>0</NroResol>`
++ la fecha del CAF, asumiendo "0 = autorización por folios" — pero **NATIVECODE SPA tiene una
+Resolución real del SII: N°99, del 21-10-2014** (confirmado en "Actualización de datos empresa
+autorizada" del portal). Arreglado: `dteService.js` ahora usa `DTE_NRO_RESOLUCION=99` /
+`DTE_FCH_RESOLUCION=2014-10-21` (nuevas variables de entorno). **Probado con el folio #5 (el
+último del CAF)**: subida aceptada de nuevo (STATUS=0, Track ID `0253167868`), pero **la
+validación final del SII sigue devolviendo "RFR - Rechazado por Error en Firma"**.
+
+**Estado al 2026-07-19, fin de la sesión de pruebas — los 5 folios de Factura del CAF están
+agotados**, ninguno con aceptación final:
+
+| Folio | Track ID | Resultado |
+|---|---|---|
+| 1 | — | Rechazado en la subida (bug Transform + namespace, antes de los fixes) |
+| 2 | — | Rechazado en la subida (bug Transform, antes del fix C14N) |
+| 3 | — | STATUS 7 "Invalid Schema Name" (antes de restaurar xsi:schemaLocation) |
+| 4 | 0253167552 | Subida aceptada (STATUS 0) — **rechazo final: RFR Error en Firma** |
+| 5 | 0253167868 | Subida aceptada (STATUS 0) — **rechazo final: RFR Error en Firma** |
+
+Con 7 bugs reales de código encontrados y arreglados, la firma verificada criptográficamente
+válida en repetidas pruebas locales contra el certificado real, y la subida aceptada dos veces —
+el rechazo final "Error en Firma" **ya no parece ser un bug de código alcanzable por este medio**.
+**Siguiente paso recomendado**: contactar la Mesa de Ayuda del SII directamente (+56 2 2395 1115)
+con los Track ID `0253167552` y `0253167868`, pidiendo que confirmen desde su lado (con
+visibilidad de logs de servidor que no tenemos) si el certificado de Nicolás Machuca está
+correctamente autorizado/registrado para firmar DTE en nombre de NATIVECODE SPA. **Se necesita un
+CAF nuevo de Factura** (los 5 folios actuales ya se usaron) para seguir probando después de tener
+esa respuesta — no pedirlo hasta tener una hipótesis nueva y concreta que probar, dada la ventana
+de 24h por CAF.
 
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
