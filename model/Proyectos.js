@@ -135,6 +135,7 @@ export default class Proyectos {
             const resultado = await conexion.ejecutarQuery(query, params);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
+            console.error('[Proyectos.selectAllProyectos]', error);
             throw new Error('Error al obtener proyectos de la base de datos');
         }
     }
@@ -170,6 +171,7 @@ export default class Proyectos {
             const resultado = await conexion.ejecutarQuery(query, param);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado[0] : null;
         } catch (error) {
+            console.error('[Proyectos.selectProyectoById]', error);
             throw new Error('Error al obtener proyecto de la base de datos');
         }
     }
@@ -232,6 +234,7 @@ export default class Proyectos {
             const query = `INSERT INTO proyectos (${cols.join(", ")}) VALUES (${placeholders})`;
             return await conexion.ejecutarQuery(query, vals);
         } catch (error) {
+            console.error('[Proyectos.insertProyecto]', error);
             throw new Error('Error al crear proyecto en la base de datos');
         }
     }
@@ -337,6 +340,7 @@ export default class Proyectos {
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
         } catch (error) {
+            console.error('[Proyectos.updateEstadoProyecto]', error);
             throw new Error('Error al cambiar estado del proyecto');
         }
     }
@@ -361,6 +365,7 @@ export default class Proyectos {
                            WHERE ${idColumn} = ? AND (observaciones IS NULL OR observaciones NOT LIKE ?)`;
             return await conexion.ejecutarQuery(query, [marker, id, `${SOFT_DELETE_PREFIX}%`]);
         } catch (error) {
+            console.error('[Proyectos.deleteProyecto]', error);
             throw new Error('Error al eliminar proyecto de la base de datos');
         }
     }
@@ -383,6 +388,7 @@ export default class Proyectos {
             const resultado = await conexion.ejecutarQuery(query, param);
             return Array.isArray(resultado) && resultado.length > 0 ? resultado : [];
         } catch (error) {
+            console.error('[Proyectos.selectProyectoPagos]', error);
             throw new Error('Error al obtener pagos del proyecto');
         }
     }
@@ -428,6 +434,7 @@ export default class Proyectos {
 
             return resultado;
         } catch (error) {
+            console.error('[Proyectos.insertProyectoPago]', error);
             throw new Error('Error al registrar pago del proyecto');
         }
     }
@@ -512,6 +519,7 @@ export default class Proyectos {
 
             return `${prefijo}${String(nextNumber).padStart(4, '0')}`;
         } catch (error) {
+            console.error('[Proyectos.getNextCodigoInterno]', error);
             throw new Error('Error al generar código interno');
         }
     }

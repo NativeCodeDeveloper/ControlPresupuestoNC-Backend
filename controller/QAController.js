@@ -22,7 +22,8 @@ export default class QAController {
             const { nombre, color_hex, es_aprobado, es_rechazo } = req.body;
             if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
             await QA.createEstado({ nombre, color_hex, es_aprobado, es_rechazo });
-            res.status(201).json({ ok: true });
+            const estados = await QA.getEstados();
+            res.status(201).json({ ok: true, estados });
         } catch {
             res.status(500).json({ message: 'Error al crear estado QA' });
         }
@@ -31,9 +32,107 @@ export default class QAController {
     static async eliminarEstado(req, res) {
         try {
             await QA.deleteEstado(req.params.id);
-            res.json({ ok: true });
+            const estados = await QA.getEstados();
+            res.json({ ok: true, estados });
         } catch {
             res.status(500).json({ message: 'Error al eliminar estado QA' });
+        }
+    }
+
+    static async reorderEstados(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: 'Se requiere un array de ids.' });
+            await QA.reorderEstados(ids);
+            res.json({ ok: true });
+        } catch {
+            res.status(500).json({ message: 'Error al reordenar estados QA' });
+        }
+    }
+
+    // ─── Tipos de caso ──────────────────────────────────────────────────────────
+
+    static async listarTipos(_req, res) {
+        try {
+            res.json(await QA.getTipos());
+        } catch {
+            res.status(500).json({ message: 'Error al obtener tipos QA' });
+        }
+    }
+
+    static async crearTipo(req, res) {
+        try {
+            const { nombre, color_hex } = req.body;
+            if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
+            await QA.createTipo({ nombre, color_hex });
+            const tipos = await QA.getTipos();
+            res.status(201).json({ ok: true, tipos });
+        } catch {
+            res.status(500).json({ message: 'Error al crear tipo QA' });
+        }
+    }
+
+    static async eliminarTipo(req, res) {
+        try {
+            await QA.deleteTipo(req.params.id);
+            const tipos = await QA.getTipos();
+            res.json({ ok: true, tipos });
+        } catch {
+            res.status(500).json({ message: 'Error al eliminar tipo QA' });
+        }
+    }
+
+    static async reorderTipos(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: 'Se requiere un array de ids.' });
+            await QA.reorderTipos(ids);
+            res.json({ ok: true });
+        } catch {
+            res.status(500).json({ message: 'Error al reordenar tipos QA' });
+        }
+    }
+
+    // ─── Prioridades ────────────────────────────────────────────────────────────
+
+    static async listarPrioridades(_req, res) {
+        try {
+            res.json(await QA.getPrioridades());
+        } catch {
+            res.status(500).json({ message: 'Error al obtener prioridades QA' });
+        }
+    }
+
+    static async crearPrioridad(req, res) {
+        try {
+            const { nombre, color_hex } = req.body;
+            if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
+            await QA.createPrioridad({ nombre, color_hex });
+            const prioridades = await QA.getPrioridades();
+            res.status(201).json({ ok: true, prioridades });
+        } catch {
+            res.status(500).json({ message: 'Error al crear prioridad QA' });
+        }
+    }
+
+    static async eliminarPrioridad(req, res) {
+        try {
+            await QA.deletePrioridad(req.params.id);
+            const prioridades = await QA.getPrioridades();
+            res.json({ ok: true, prioridades });
+        } catch {
+            res.status(500).json({ message: 'Error al eliminar prioridad QA' });
+        }
+    }
+
+    static async reorderPrioridades(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: 'Se requiere un array de ids.' });
+            await QA.reorderPrioridades(ids);
+            res.json({ ok: true });
+        } catch {
+            res.status(500).json({ message: 'Error al reordenar prioridades QA' });
         }
     }
 
@@ -144,15 +243,15 @@ export default class QAController {
 
     static async crearCaso(req, res) {
         try {
-            const { id_version, titulo, tipo, prioridad, id_estado, id_responsable,
+            const { id_version, titulo, id_tipo, id_prioridad, id_estado, id_responsable,
                     descripcion, pasos, resultado_esperado, resultado_actual, observaciones } = req.body;
 
-            if (!id_version || !titulo || !id_estado) {
-                return res.status(400).json({ message: 'id_version, titulo e id_estado son requeridos' });
+            if (!id_version || !titulo || !id_estado || !id_tipo || !id_prioridad) {
+                return res.status(400).json({ message: 'id_version, titulo, id_estado, id_tipo e id_prioridad son requeridos' });
             }
 
             const { id_caso, numero_caso } = await QA.createCaso({
-                id_version, titulo, tipo, prioridad, id_estado, id_responsable,
+                id_version, titulo, id_tipo, id_prioridad, id_estado, id_responsable,
                 descripcion, pasos, resultado_esperado, resultado_actual, observaciones
             });
 
@@ -161,7 +260,7 @@ export default class QAController {
             await QA.addActividad({
                 id_caso,
                 tipo: 'creacion',
-                contenido: `Caso creado — tipo ${tipo ?? 'Funcional'}, prioridad ${prioridad ?? 'media'}`,
+                contenido: `Caso creado — tipo ${caso.tipo_nombre ?? '—'}, prioridad ${caso.prioridad_nombre ?? '—'}`,
                 id_socio: req.body.id_socio ?? null
             });
 

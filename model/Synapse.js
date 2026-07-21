@@ -385,7 +385,12 @@ export async function getCockpitData({ mes, anio } = {}) {
         let estado_alerta_pago = null;
         let dias_para_vencer   = null;
 
-        if (p.ciclo_facturacion && p.ciclo_facturacion !== 'Unico' && p.fecha_proximo_pago) {
+        // Cancelado o Desactivado → sin alerta de pago pendiente (match por prefijo,
+        // case-insensitive, porque los nombres de estado en BD son inconsistentes).
+        const nombreEstado = (p.estado_nombre || '').toLowerCase();
+        const esEstadoFinalPago = nombreEstado.startsWith('cancelad') || nombreEstado.startsWith('desactivad');
+
+        if (!esEstadoFinalPago && p.ciclo_facturacion && p.ciclo_facturacion !== 'Unico' && p.fecha_proximo_pago) {
             const vence = new Date(p.fecha_proximo_pago);
             vence.setHours(0, 0, 0, 0);
             const diff = Math.floor((vence - today) / 86400000);

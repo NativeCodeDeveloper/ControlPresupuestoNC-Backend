@@ -3,8 +3,21 @@ import { parsePagination } from "../utils/pagination.js";
 import { emitUpdate } from "../config/socket.js";
 
 /**
+ * esEstadoFinalPago - Un proyecto Cancelado o Desactivado ya no debe generar
+ * alertas de pago pendiente (el cliente dejó de usar el servicio). Se compara
+ * por prefijo, case-insensitive, porque los nombres de estado en BD son
+ * inconsistentes ("Desactivada" vs "Desactivado por no pago", etc.) y pueden
+ * seguir cambiando desde /config.
+ */
+function esEstadoFinalPago(proyecto) {
+    const nombre = (proyecto?.estado_nombre || "").toLowerCase();
+    return nombre.startsWith("cancelad") || nombre.startsWith("desactivad");
+}
+
+/**
  * computeAlertaPago - Calcula el estado de alerta de facturación de un proyecto.
  * Lógica:
+ *   - Proyecto Cancelado o Desactivado → null (ya no aplica alerta de pago)
  *   - Sin ciclo recurrente o sin fecha_proximo_pago → null (sin alerta)
  *   - > 7 días para vencer → "verde"
  *   - 0-7 días para vencer → "naranja"
@@ -12,6 +25,7 @@ import { emitUpdate } from "../config/socket.js";
  *   - > 7 días vencido → "rojo" (la desactivación se maneja en auto-deactivate)
  */
 function computeAlertaPago(proyecto) {
+    if (esEstadoFinalPago(proyecto)) return null;
     if (!proyecto?.ciclo_facturacion || proyecto.ciclo_facturacion === "Unico") return null;
     if (!proyecto?.fecha_proximo_pago) return null;
 
@@ -40,7 +54,7 @@ async function enrichProyectos(proyectos) {
         const alerta = computeAlertaPago(p);
         let diasParaVencer = null;
 
-        if (p.fecha_proximo_pago && p.ciclo_facturacion && p.ciclo_facturacion !== "Unico") {
+        if (!esEstadoFinalPago(p) && p.fecha_proximo_pago && p.ciclo_facturacion && p.ciclo_facturacion !== "Unico") {
             const vence = new Date(p.fecha_proximo_pago);
             vence.setHours(0, 0, 0, 0);
             diasParaVencer = Math.floor((vence.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));

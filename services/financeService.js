@@ -1602,7 +1602,8 @@ export async function calcularF29(query = {}) {
          FROM proyecto_pagos pp
          JOIN proyectos p ON pp.${fkCol} = p.${proyectoPk}
          WHERE pp.fecha_pago BETWEEN ? AND ?
-           AND COALESCE(p.afecto_iva, 1) = 1`,
+           AND COALESCE(p.afecto_iva, 1) = 1
+           AND p.activo = 1`,
         [startDate, endDate],
         [{ total: 0 }]
     );

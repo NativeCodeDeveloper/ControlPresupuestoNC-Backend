@@ -3,10 +3,23 @@ import QAController from '../controller/QAController.js';
 
 const router = Router();
 
-// Estados
-router.get('/estados',          QAController.listarEstados);
-router.post('/estados',         QAController.crearEstado);
-router.delete('/estados/:id',   QAController.eliminarEstado);
+// Estados (rutas estáticas antes de /estados/:id)
+router.get('/estados',           QAController.listarEstados);
+router.post('/estados',          QAController.crearEstado);
+router.patch('/estados/reorder', QAController.reorderEstados);
+router.delete('/estados/:id',    QAController.eliminarEstado);
+
+// Tipos de caso
+router.get('/tipos',           QAController.listarTipos);
+router.post('/tipos',          QAController.crearTipo);
+router.patch('/tipos/reorder', QAController.reorderTipos);
+router.delete('/tipos/:id',    QAController.eliminarTipo);
+
+// Prioridades
+router.get('/prioridades',           QAController.listarPrioridades);
+router.post('/prioridades',          QAController.crearPrioridad);
+router.patch('/prioridades/reorder', QAController.reorderPrioridades);
+router.delete('/prioridades/:id',    QAController.eliminarPrioridad);
 
 // Etiquetas
 router.get('/etiquetas',        QAController.listarEtiquetas);

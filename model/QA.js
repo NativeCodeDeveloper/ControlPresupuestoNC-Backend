@@ -47,6 +47,87 @@ export async function deleteEstado(id) {
     );
 }
 
+export async function reorderEstados(orderedIds) {
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE qa_estados SET orden = CASE id_estado ${cases} END WHERE id_estado IN (${ids})`,
+        [...params, ...orderedIds]
+    );
+}
+
+// ─── Tipos de caso ──────────────────────────────────────────────────────────
+
+export async function getTipos() {
+    return db().ejecutarQuery(
+        `SELECT * FROM qa_tipos WHERE activo = 1 ORDER BY orden`, []
+    );
+}
+
+export async function createTipo({ nombre, color_hex }) {
+    const [maxRow] = await db().ejecutarQuery(
+        `SELECT COALESCE(MAX(orden),0)+1 AS next FROM qa_tipos`, []
+    ) ?? [{ next: 1 }];
+    return db().ejecutarQuery(
+        `INSERT INTO qa_tipos (nombre, color_hex, orden) VALUES (?, ?, ?)`,
+        [nombre, color_hex ?? '#6b7280', maxRow?.next ?? 1]
+    );
+}
+
+export async function deleteTipo(id) {
+    return db().ejecutarQuery(
+        `UPDATE qa_tipos SET activo = 0 WHERE id_tipo = ?`, [id]
+    );
+}
+
+export async function reorderTipos(orderedIds) {
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE qa_tipos SET orden = CASE id_tipo ${cases} END WHERE id_tipo IN (${ids})`,
+        [...params, ...orderedIds]
+    );
+}
+
+// ─── Prioridades ────────────────────────────────────────────────────────────
+
+export async function getPrioridades() {
+    return db().ejecutarQuery(
+        `SELECT * FROM qa_prioridades WHERE activo = 1 ORDER BY orden`, []
+    );
+}
+
+export async function createPrioridad({ nombre, color_hex }) {
+    const [maxRow] = await db().ejecutarQuery(
+        `SELECT COALESCE(MAX(orden),0)+1 AS next FROM qa_prioridades`, []
+    ) ?? [{ next: 1 }];
+    return db().ejecutarQuery(
+        `INSERT INTO qa_prioridades (nombre, color_hex, orden) VALUES (?, ?, ?)`,
+        [nombre, color_hex ?? '#6b7280', maxRow?.next ?? 1]
+    );
+}
+
+export async function deletePrioridad(id) {
+    return db().ejecutarQuery(
+        `UPDATE qa_prioridades SET activo = 0 WHERE id_prioridad = ?`, [id]
+    );
+}
+
+export async function reorderPrioridades(orderedIds) {
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE qa_prioridades SET orden = CASE id_prioridad ${cases} END WHERE id_prioridad IN (${ids})`,
+        [...params, ...orderedIds]
+    );
+}
+
 // ─── Etiquetas ────────────────────────────────────────────────────────────────
 
 export async function getEtiquetas() {
@@ -140,18 +221,22 @@ export async function getCasos(id_version, { estado, prioridad, tipo, responsabl
     const params = [id_version];
 
     if (estado)      { where.push('c.id_estado = ?');      params.push(estado); }
-    if (prioridad)   { where.push('c.prioridad = ?');       params.push(prioridad); }
-    if (tipo)        { where.push('c.tipo = ?');            params.push(tipo); }
+    if (prioridad)   { where.push('c.id_prioridad = ?');   params.push(prioridad); }
+    if (tipo)        { where.push('c.id_tipo = ?');        params.push(tipo); }
     if (responsable) { where.push('c.id_responsable = ?'); params.push(responsable); }
 
     return db().ejecutarQuery(
         `SELECT c.*,
                 e.nombre AS estado_nombre, e.color_hex AS estado_color,
                 e.es_aprobado, e.es_rechazo,
+                t.nombre AS tipo_nombre, t.color_hex AS tipo_color,
+                pr.nombre AS prioridad_nombre, pr.color_hex AS prioridad_color,
                 s.nombre AS responsable_nombre
          FROM qa_casos c
-         LEFT JOIN qa_estados e ON c.id_estado    = e.id_estado
-         LEFT JOIN socios     s ON c.id_responsable = s.id_socio
+         LEFT JOIN qa_estados     e  ON c.id_estado      = e.id_estado
+         LEFT JOIN qa_tipos       t  ON c.id_tipo        = t.id_tipo
+         LEFT JOIN qa_prioridades pr ON c.id_prioridad   = pr.id_prioridad
+         LEFT JOIN socios         s  ON c.id_responsable = s.id_socio
          WHERE ${where.join(' AND ')}
          ORDER BY c.creado_en DESC`,
         params
@@ -163,12 +248,16 @@ export async function getCasoById(id) {
         `SELECT c.*,
                 e.nombre AS estado_nombre, e.color_hex AS estado_color,
                 e.es_aprobado, e.es_rechazo,
+                t.nombre AS tipo_nombre, t.color_hex AS tipo_color,
+                pr.nombre AS prioridad_nombre, pr.color_hex AS prioridad_color,
                 s.nombre AS responsable_nombre,
                 v.nombre AS version_nombre
          FROM qa_casos c
-         LEFT JOIN qa_estados  e ON c.id_estado     = e.id_estado
-         LEFT JOIN socios      s ON c.id_responsable = s.id_socio
-         LEFT JOIN qa_versiones v ON c.id_version    = v.id_version
+         LEFT JOIN qa_estados     e  ON c.id_estado      = e.id_estado
+         LEFT JOIN qa_tipos       t  ON c.id_tipo        = t.id_tipo
+         LEFT JOIN qa_prioridades pr ON c.id_prioridad   = pr.id_prioridad
+         LEFT JOIN socios         s  ON c.id_responsable = s.id_socio
+         LEFT JOIN qa_versiones   v  ON c.id_version     = v.id_version
          WHERE c.id_caso = ? AND c.eliminado_en IS NULL`,
         [id]
     );
@@ -185,17 +274,17 @@ export async function getCasoById(id) {
     return caso;
 }
 
-export async function createCaso({ id_version, titulo, tipo, prioridad, id_estado, id_responsable,
+export async function createCaso({ id_version, titulo, id_tipo, id_prioridad, id_estado, id_responsable,
                                     descripcion, pasos, resultado_esperado, resultado_actual, observaciones }) {
     const conexion     = db();
     const numero_caso  = await generarNumeroCaso(conexion);
 
     const result = await conexion.ejecutarQuery(
         `INSERT INTO qa_casos
-         (numero_caso, id_version, titulo, tipo, prioridad, id_estado, id_responsable,
+         (numero_caso, id_version, titulo, id_tipo, id_prioridad, id_estado, id_responsable,
           descripcion, pasos, resultado_esperado, resultado_actual, observaciones)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        [numero_caso, id_version, titulo, tipo ?? 'Funcional', prioridad ?? 'media',
+        [numero_caso, id_version, titulo, id_tipo, id_prioridad,
          id_estado, id_responsable ?? null, descripcion ?? null, pasos ?? null,
          resultado_esperado ?? null, resultado_actual ?? null, observaciones ?? null]
     );
@@ -204,7 +293,7 @@ export async function createCaso({ id_version, titulo, tipo, prioridad, id_estad
 }
 
 export async function updateCaso(id, campos) {
-    const permitidos = ['titulo','tipo','prioridad','id_estado','id_responsable',
+    const permitidos = ['titulo','id_tipo','id_prioridad','id_estado','id_responsable',
                         'descripcion','pasos','resultado_esperado','resultado_actual','observaciones'];
     const nullable   = new Set(['id_responsable','descripcion','pasos',
                                 'resultado_esperado','resultado_actual','observaciones']);
