@@ -1610,18 +1610,17 @@ export async function calcularF29(query = {}) {
     const baseDebito = Number(debitoRow?.total || 0);
     const debitoFiscal = Math.round(baseDebito * IVA);
 
-    // Crédito Fiscal fijos: todos los costos fijos activos en el período
+    // Crédito Fiscal fijos: solo los costos fijos que efectivamente vencen/facturan
+    // este período (mismo criterio "efectivo" que usa getFinancialSummary para
+    // totalFixedCosts) — NO el monto completo de todo costo activo, que inflaría
+    // 12x un costo Anual o 3x uno Trimestral cada mes que permanece vigente.
     const fixedData = await getFixedCostsData(conexion);
-    const startObj = new Date(startDate);
-    const endObj = new Date(endDate);
-    let baseCreditoFijos = 0;
-    for (const cost of fixedData) {
-        const inicio = cost.fecha_inicio ? new Date(cost.fecha_inicio) : null;
-        const fin = cost.fecha_fin ? new Date(cost.fecha_fin) : null;
-        if (inicio && inicio > endObj) continue;
-        if (fin && fin < startObj) continue;
-        baseCreditoFijos += Number(cost.monto || 0);
-    }
+    const baseCreditoFijos = fixedData
+        .filter((cost) => fixedCostOccursInPeriod(cost, año, mes - 1))
+        .reduce((sum, cost) => {
+            const amount = Number.parseFloat(cost?.monto);
+            return sum + (Number.isFinite(amount) ? amount : 0);
+        }, 0);
     const creditoFiscalFijos = Math.round(baseCreditoFijos * IVA);
 
     // Crédito Fiscal variables: solo los que tienen con_factura = 1

@@ -377,12 +377,12 @@ export default class ProyectosController {
 
             // Normalizar campos que aceptan dos nombres (compatibilidad frontend)
             const conceptoFinal = concepto || description;
-            const montoFinal = monto || amount;
+            const montoFinal = Number(monto ?? amount);
             const fechaFinal = fecha_pago || date;
             const comprobanteFinal = numero_comprobante || receipt || null;
 
-            if (!id || !conceptoFinal || !montoFinal || !fechaFinal) {
-                return res.status(400).json({ message: "Faltan datos requeridos (concepto, monto, fecha)" });
+            if (!id || !conceptoFinal || !Number.isFinite(montoFinal) || montoFinal <= 0 || !fechaFinal) {
+                return res.status(400).json({ message: "Faltan datos requeridos (concepto, monto, fecha) o el monto no es válido" });
             }
 
             const proyecto = new Proyectos();
@@ -400,11 +400,12 @@ export default class ProyectosController {
         try {
             const { pagoId } = req.params;
             const { concepto, monto, fecha_pago, numero_comprobante, notas } = req.body;
-            if (!concepto || !monto || !fecha_pago) {
-                return res.status(400).json({ message: "Faltan datos requeridos (concepto, monto, fecha_pago)" });
+            const montoNum = Number(monto);
+            if (!concepto || !Number.isFinite(montoNum) || montoNum <= 0 || !fecha_pago) {
+                return res.status(400).json({ message: "Faltan datos requeridos (concepto, monto, fecha_pago) o el monto no es válido" });
             }
             const proyecto = new Proyectos();
-            const resultado = await proyecto.updateProyectoPago(pagoId, concepto, monto, fecha_pago, numero_comprobante ?? null, notas ?? null);
+            const resultado = await proyecto.updateProyectoPago(pagoId, concepto, montoNum, fecha_pago, numero_comprobante ?? null, notas ?? null);
             emitUpdate('ncf:update');
             return res.json(resultado);
         } catch (error) {

@@ -410,11 +410,14 @@ export default class Proyectos {
             ) WHERE ${proyectoIdColumn} = ?`;
             await conexion.ejecutarQuery(queryUpdate, [proyecto_id, proyecto_id]);
 
-            // Si existe ciclo de facturación, avanzar fecha_proximo_pago automáticamente
+            // Si existe ciclo de facturación, avanzar fecha_proximo_pago SOLO cuando lo
+            // pagado dentro de la ventana del ciclo actual ya cubre el monto acordado.
+            // Antes avanzaba con cualquier pago (aunque fuera un abono parcial o una
+            // segunda cuota del mismo ciclo), lo que podía saltarse un cobro completo.
             const hasCiclo = await hasProyectosColumn(conexion, "ciclo_facturacion");
             if (hasCiclo) {
                 const [proy] = await conexion.ejecutarQuery(
-                    `SELECT ciclo_facturacion, fecha_proximo_pago FROM proyectos WHERE ${proyectoIdColumn} = ?`,
+                    `SELECT ciclo_facturacion, fecha_proximo_pago, monto_acordado FROM proyectos WHERE ${proyectoIdColumn} = ?`,
                     [proyecto_id]
                 );
                 if (proy && proy.ciclo_facturacion && proy.ciclo_facturacion !== "Unico" && proy.fecha_proximo_pago) {
@@ -422,12 +425,25 @@ export default class Proyectos {
                     const paso = mesesPorCiclo[proy.ciclo_facturacion] || 0;
                     if (paso > 0) {
                         const dueDate = new Date(proy.fecha_proximo_pago);
-                        dueDate.setUTCMonth(dueDate.getUTCMonth() + paso);
-                        const nextDate = dueDate.toISOString().slice(0, 10);
-                        await conexion.ejecutarQuery(
-                            `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
-                            [nextDate, proyecto_id]
+                        const cycleStart = new Date(dueDate);
+                        cycleStart.setUTCMonth(cycleStart.getUTCMonth() - paso);
+                        const cycleStartStr = cycleStart.toISOString().slice(0, 10);
+
+                        const [{ total: pagadoEnCiclo } = { total: 0 }] = await conexion.ejecutarQuery(
+                            `SELECT COALESCE(SUM(monto), 0) AS total FROM proyecto_pagos
+                             WHERE ${proyectoFkColumn} = ? AND fecha_pago >= ? AND fecha_pago <= ?`,
+                            [proyecto_id, cycleStartStr, fecha_pago]
                         );
+
+                        const montoAcordado = Number(proy.monto_acordado || 0);
+                        if (montoAcordado <= 0 || Number(pagadoEnCiclo) >= montoAcordado) {
+                            dueDate.setUTCMonth(dueDate.getUTCMonth() + paso);
+                            const nextDate = dueDate.toISOString().slice(0, 10);
+                            await conexion.ejecutarQuery(
+                                `UPDATE proyectos SET fecha_proximo_pago = ? WHERE ${proyectoIdColumn} = ?`,
+                                [nextDate, proyecto_id]
+                            );
+                        }
                     }
                 }
             }

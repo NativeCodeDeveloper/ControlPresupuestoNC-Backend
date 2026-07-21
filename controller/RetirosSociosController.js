@@ -123,7 +123,7 @@ export default class RetirosSociosController {
             const db = DataBase.getInstance();
             const { resultado, disponibleData } = await db.withTransaction(async (conn) => {
                 // Bloquear la fila del socio hasta que termine la transacción
-                await conn.query('SELECT id FROM socios WHERE id = ? FOR UPDATE', [id]);
+                await conn.query('SELECT id_socio FROM socios WHERE id_socio = ? FOR UPDATE', [id]);
 
                 const data = await getPartnerAvailableAmount(id, queryPeriodo);
                 if (!data) throw Object.assign(new Error("Error al calcular disponible del socio"), { status: 500 });
