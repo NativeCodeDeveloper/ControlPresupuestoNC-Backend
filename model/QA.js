@@ -42,6 +42,12 @@ export async function createEstado({ nombre, color_hex, es_aprobado, es_rechazo 
 }
 
 export async function deleteEstado(id) {
+    const [row] = await db().ejecutarQuery(
+        `SELECT COUNT(*) AS total FROM qa_casos WHERE id_estado = ? AND eliminado_en IS NULL`, [id]
+    );
+    if (row?.total > 0) {
+        throw new Error(`No se puede eliminar: hay ${row.total} caso(s) en esta columna. Muévelos a otra columna primero.`);
+    }
     return db().ejecutarQuery(
         `UPDATE qa_estados SET activo = 0 WHERE id_estado = ?`, [id]
     );
@@ -77,6 +83,12 @@ export async function createTipo({ nombre, color_hex }) {
 }
 
 export async function deleteTipo(id) {
+    const [row] = await db().ejecutarQuery(
+        `SELECT COUNT(*) AS total FROM qa_casos WHERE id_tipo = ? AND eliminado_en IS NULL`, [id]
+    );
+    if (row?.total > 0) {
+        throw new Error(`No se puede eliminar: hay ${row.total} caso(s) con este tipo. Cámbialos primero.`);
+    }
     return db().ejecutarQuery(
         `UPDATE qa_tipos SET activo = 0 WHERE id_tipo = ?`, [id]
     );
@@ -112,6 +124,12 @@ export async function createPrioridad({ nombre, color_hex }) {
 }
 
 export async function deletePrioridad(id) {
+    const [row] = await db().ejecutarQuery(
+        `SELECT COUNT(*) AS total FROM qa_casos WHERE id_prioridad = ? AND eliminado_en IS NULL`, [id]
+    );
+    if (row?.total > 0) {
+        throw new Error(`No se puede eliminar: hay ${row.total} caso(s) con esta prioridad. Cámbialos primero.`);
+    }
     return db().ejecutarQuery(
         `UPDATE qa_prioridades SET activo = 0 WHERE id_prioridad = ?`, [id]
     );
@@ -147,6 +165,12 @@ export async function createVersionEstado({ nombre, color_hex, es_aprobado, es_r
 }
 
 export async function deleteVersionEstado(id) {
+    const [row] = await db().ejecutarQuery(
+        `SELECT COUNT(*) AS total FROM qa_versiones WHERE id_estado_version = ? AND eliminado_en IS NULL`, [id]
+    );
+    if (row?.total > 0) {
+        throw new Error(`No se puede eliminar: hay ${row.total} versión(es) en este estado. Cámbialas primero.`);
+    }
     return db().ejecutarQuery(
         `UPDATE qa_version_estados SET activo = 0 WHERE id_estado_version = ?`, [id]
     );

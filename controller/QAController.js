@@ -34,8 +34,8 @@ export default class QAController {
             await QA.deleteEstado(req.params.id);
             const estados = await QA.getEstados();
             res.json({ ok: true, estados });
-        } catch {
-            res.status(500).json({ message: 'Error al eliminar estado QA' });
+        } catch (e) {
+            res.status(409).json({ message: e.message || 'Error al eliminar estado QA' });
         }
     }
 
@@ -77,8 +77,8 @@ export default class QAController {
             await QA.deleteTipo(req.params.id);
             const tipos = await QA.getTipos();
             res.json({ ok: true, tipos });
-        } catch {
-            res.status(500).json({ message: 'Error al eliminar tipo QA' });
+        } catch (e) {
+            res.status(409).json({ message: e.message || 'Error al eliminar tipo QA' });
         }
     }
 
@@ -120,8 +120,8 @@ export default class QAController {
             await QA.deletePrioridad(req.params.id);
             const prioridades = await QA.getPrioridades();
             res.json({ ok: true, prioridades });
-        } catch {
-            res.status(500).json({ message: 'Error al eliminar prioridad QA' });
+        } catch (e) {
+            res.status(409).json({ message: e.message || 'Error al eliminar prioridad QA' });
         }
     }
 
@@ -193,8 +193,8 @@ export default class QAController {
             await QA.deleteVersionEstado(req.params.id);
             const estados = await QA.getVersionEstados();
             res.json({ ok: true, estados });
-        } catch {
-            res.status(500).json({ message: 'Error al eliminar estado de versión QA' });
+        } catch (e) {
+            res.status(409).json({ message: e.message || 'Error al eliminar estado de versión QA' });
         }
     }
 
