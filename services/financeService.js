@@ -1034,20 +1034,24 @@ async function getPartnersAvailableAccumulated(conexion, targetPeriod, context =
         const income = Number(monthly.income.get(monthKey) || 0);
         const variableCosts = Number(monthly.variable.get(monthKey) || 0);
         const withdrawals = Number(monthly.withdrawals.get(monthKey) || 0);
-        const fixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
-            .filter((cost) => fixedCostOccursInPeriod(cost, year, month - 1))
+        // Devengado (misma base que netProfit/utilidadContable de getPeriodFinancialCore):
+        // prorratea costos anuales/trimestrales en vez de sumarlos completos solo el mes
+        // en que vencen en caja. Sin esto, el acumulado queda inflado en los meses donde
+        // un costo grande "aún no vence" en efectivo, aunque ya se esté devengando.
+        const costosDevengados = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostIsActiveInPeriod(cost, year, month - 1))
             .reduce((sum, cost) => {
-                const amount = Number.parseFloat(cost?.monto);
+                const amount = getMonthlyAccrualAmount(cost);
                 return sum + (Number.isFinite(amount) ? amount : 0);
             }, 0);
 
-        const operatingResult = income - fixedCosts - variableCosts;
-        const baseForDeductions = Math.max(0, operatingResult);
+        const resultadoContable = income - costosDevengados - variableCosts;
+        const baseForDeductions = Math.max(0, resultadoContable);
         const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
         const reinvestPct = Number(config?.porcentaje_reinversion || 0);
         const emergencyDeduction = (baseForDeductions * emergencyPct) / 100;
         const reinvestDeduction = (baseForDeductions * reinvestPct) / 100;
-        const netProfit = operatingResult - emergencyDeduction - reinvestDeduction;
+        const netProfit = resultadoContable - emergencyDeduction - reinvestDeduction;
 
         const delta = Number(netProfit || 0) - withdrawals;
         accumulated = Math.max(0, accumulated + delta);
@@ -1204,20 +1208,21 @@ async function getPartnerCumulativeAvailable(conexion, socioId, porcentaje, targ
         const monthKey = `${year}-${month}`;
         const income = Number(monthly.income.get(monthKey) || 0);
         const variableCosts = Number(monthly.variable.get(monthKey) || 0);
-        const fixedCosts = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
-            .filter((cost) => fixedCostOccursInPeriod(cost, year, month - 1))
+        // Devengado — mismo criterio que getPeriodFinancialCore y getPartnersAvailableAccumulated.
+        const costosDevengados = (Array.isArray(fixedCostsData) ? fixedCostsData : [])
+            .filter((cost) => fixedCostIsActiveInPeriod(cost, year, month - 1))
             .reduce((sum, cost) => {
-                const amount = Number.parseFloat(cost?.monto);
+                const amount = getMonthlyAccrualAmount(cost);
                 return sum + (Number.isFinite(amount) ? amount : 0);
             }, 0);
 
-        const operatingResult = income - fixedCosts - variableCosts;
-        const baseForDeductions = Math.max(0, operatingResult);
+        const resultadoContable = income - costosDevengados - variableCosts;
+        const baseForDeductions = Math.max(0, resultadoContable);
         const emergencyPct = Number(config?.porcentaje_fondo_emergencia || 0);
         const reinvestPct = Number(config?.porcentaje_reinversion || 0);
         const emergencyDeduction = (baseForDeductions * emergencyPct) / 100;
         const reinvestDeduction = (baseForDeductions * reinvestPct) / 100;
-        const netProfit = operatingResult - emergencyDeduction - reinvestDeduction;
+        const netProfit = resultadoContable - emergencyDeduction - reinvestDeduction;
 
         // Share del socio este mes (nunca negativo)
         const partnerShare = Math.max(0, (netProfit * porcentaje) / 100);
