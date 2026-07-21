@@ -4,6 +4,8 @@ import {
     getFlujoCajaAnual,
     calcularF29
 } from "../services/financeService.js";
+import { emitUpdate } from "../config/socket.js";
+import * as F29Pagos from "../model/F29Pagos.js";
 
 /**
  * FinanzasController
@@ -89,6 +91,62 @@ export default class FinanzasController {
         } catch (error) {
             console.error("[FinanzasController.obtenerF29]", error);
             return res.status(500).json({ message: "Error al calcular F29" });
+        }
+    }
+
+    /**
+     * obtenerHistorialF29 - Últimos N períodos de F29 con su estado (pagado/pendiente).
+     * Los períodos ya marcados como pagados devuelven el snapshot guardado al momento
+     * de pagar; los pendientes se calculan en vivo.
+     * Ruta: GET /api/finanzas/f29/historial
+     * Query: meses (opcional, default 12, máx 36)
+     */
+    static async obtenerHistorialF29(req, res) {
+        try {
+            const meses = Math.min(36, Math.max(1, Number(req.query.meses) || 12));
+            const data = await F29Pagos.getHistorial(meses);
+            return res.json(data);
+        } catch (error) {
+            console.error("[FinanzasController.obtenerHistorialF29]", error);
+            return res.status(500).json({ message: "Error al obtener historial F29" });
+        }
+    }
+
+    /**
+     * marcarPagadoF29 - Marca un período F29 como pagado, guardando un snapshot
+     * del cálculo actual (débito, crédito, IVA neto, PPM).
+     * Ruta: POST /api/finanzas/f29/marcar-pagado
+     * Body: { mes (1-12, requerido), anio (requerido), fecha_pago (opcional), notas (opcional) }
+     */
+    static async marcarPagadoF29(req, res) {
+        try {
+            const mes = Number(req.body?.mes);
+            const anio = Number(req.body?.anio);
+            if (!Number.isFinite(mes) || mes < 1 || mes > 12 || !Number.isFinite(anio)) {
+                return res.status(400).json({ message: "mes (1-12) y anio son requeridos" });
+            }
+            const resultado = await F29Pagos.marcarPagado({ mes, anio, fecha_pago: req.body?.fecha_pago, notas: req.body?.notas });
+            emitUpdate('ncf:update');
+            return res.status(201).json({ ok: true, resultado });
+        } catch (error) {
+            console.error("[FinanzasController.marcarPagadoF29]", error);
+            return res.status(500).json({ message: "Error al marcar F29 como pagado" });
+        }
+    }
+
+    /**
+     * desmarcarPagadoF29 - Revierte la marca de pagado de un período F29 (por error).
+     * Ruta: DELETE /api/finanzas/f29/marcar-pagado/:anio/:mes
+     */
+    static async desmarcarPagadoF29(req, res) {
+        try {
+            const { anio, mes } = req.params;
+            await F29Pagos.desmarcarPagado(Number(mes), Number(anio));
+            emitUpdate('ncf:update');
+            return res.json({ ok: true });
+        } catch (error) {
+            console.error("[FinanzasController.desmarcarPagadoF29]", error);
+            return res.status(500).json({ message: "Error al desmarcar F29" });
         }
     }
 }
