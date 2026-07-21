@@ -85,14 +85,15 @@ function buildHtml({ subject, bodyText }) {
 
 /**
  * enviarProyectoEmail - Envía un correo relacionado a un proyecto (bienvenida,
- * solicitud de usuarios, finalización, etc) usando el wrapper HTML de marca
- * NativeCode. `to` acepta múltiples destinatarios separados por coma.
+ * solicitud de usuarios, finalización, etc). Si se recibe `html`, se envía tal
+ * cual (template ya diseñado); si no, se envuelve `body` en el wrapper de
+ * marca NativeCode. `to` acepta múltiples destinatarios separados por coma.
  */
-export async function enviarProyectoEmail({ to, subject, body, attachments = [] }) {
+export async function enviarProyectoEmail({ to, subject, body, html, attachments = [] }) {
     const recipients = String(to || '').split(',').map((e) => e.trim()).filter(Boolean);
     if (!recipients.length) return { ok: false, error: 'Email destinatario inválido.' };
 
-    const htmlContent = buildHtml({ subject, bodyText: body });
+    const htmlContent = html || buildHtml({ subject, bodyText: body });
     const safeAttachments = (Array.isArray(attachments) ? attachments : [])
         .filter((a) => a?.content && a?.name)
         .slice(0, 5);

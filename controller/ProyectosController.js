@@ -436,16 +436,16 @@ export default class ProyectosController {
      * solo se encarga del envío real vía Brevo.
      * Ruta: POST /api/proyectos/:id/email/enviar
      * Body: { to (string, requerido — acepta varios separados por coma),
-     *         subject (string, requerido), body (string, requerido),
+     *         subject (string, requerido), body o html (uno requerido),
      *         attachments (opcional, [{ content: base64, name }]) }
      */
     static async enviarCorreoProyecto(req, res) {
         try {
-            const { to, subject, body, attachments } = req.body;
-            if (!to || !subject || !body) {
-                return res.status(400).json({ message: "Faltan campos requeridos (to, subject, body)" });
+            const { to, subject, body, html, attachments } = req.body;
+            if (!to || !subject || (!body && !html)) {
+                return res.status(400).json({ message: "Faltan campos requeridos (to, subject, body o html)" });
             }
-            const resultado = await enviarProyectoEmail({ to, subject, body, attachments });
+            const resultado = await enviarProyectoEmail({ to, subject, body, html, attachments });
             if (!resultado.ok) {
                 return res.status(500).json({ message: resultado.error || "Error al enviar correo" });
             }
