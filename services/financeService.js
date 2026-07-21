@@ -183,12 +183,24 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
 
     let due;
 
-    // Si existe fecha_ultimo_pago, el próximo vencimiento es exactamente un ciclo después.
-    // Esto garantiza que "Registrar Pago" avance el recordatorio sin iterar desde el inicio.
+    // Si existe fecha_ultimo_pago, el punto de partida es un ciclo después de ese pago —
+    // pero hay que seguir avanzando (igual que la rama sin fecha_ultimo_pago) hasta alcanzar
+    // el período consultado. Sin este bucle, la función siempre devolvía la MISMA fecha
+    // (fecha_ultimo_pago + 1 ciclo) sin importar qué período se estuviera consultando, así
+    // que un costo recurrente "desaparecía" de todas las proyecciones futuras salvo el mes
+    // inmediatamente siguiente al último pago registrado.
     const ultimoPago = normalizeDate(cost?.fecha_ultimo_pago);
     if (ultimoPago) {
         const moved = addMonths(ultimoPago.getFullYear(), ultimoPago.getMonth(), stepMonths);
         due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+
+        let guard = 0;
+        while (due < ref && guard < 600) {
+            const advanced = addMonths(due.getFullYear(), due.getMonth(), stepMonths);
+            due = buildDateInMonth(advanced.year, advanced.monthIndex, paymentDay);
+            guard += 1;
+        }
+        if (guard >= 600) return null;
         if (end && due > end) return null;
         return due;
     }
