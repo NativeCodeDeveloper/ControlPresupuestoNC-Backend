@@ -1,6 +1,7 @@
 import Proyectos from "../model/Proyectos.js";
 import { parsePagination } from "../utils/pagination.js";
 import { emitUpdate } from "../config/socket.js";
+import { enviarProyectoEmail } from "../services/proyectoEmailService.js";
 
 /**
  * esEstadoFinalPago - Un proyecto Cancelado o Desactivado ya no debe generar
@@ -425,6 +426,33 @@ export default class ProyectosController {
         } catch (error) {
             console.error("[ProyectosController.eliminarPagoProyecto]", error);
             return res.status(500).json({ message: "Error al eliminar pago" });
+        }
+    }
+
+    /**
+     * enviarCorreoProyecto - Envía un correo relacionado a un proyecto (bienvenida,
+     * solicitud de usuarios, finalización, etc), con el wrapper de marca NativeCode.
+     * El texto (to/subject/body) llega editado desde el frontend — este endpoint
+     * solo se encarga del envío real vía Brevo.
+     * Ruta: POST /api/proyectos/:id/email/enviar
+     * Body: { to (string, requerido — acepta varios separados por coma),
+     *         subject (string, requerido), body (string, requerido),
+     *         attachments (opcional, [{ content: base64, name }]) }
+     */
+    static async enviarCorreoProyecto(req, res) {
+        try {
+            const { to, subject, body, attachments } = req.body;
+            if (!to || !subject || !body) {
+                return res.status(400).json({ message: "Faltan campos requeridos (to, subject, body)" });
+            }
+            const resultado = await enviarProyectoEmail({ to, subject, body, attachments });
+            if (!resultado.ok) {
+                return res.status(500).json({ message: resultado.error || "Error al enviar correo" });
+            }
+            return res.json({ ok: true, enviados: resultado.enviados });
+        } catch (error) {
+            console.error("[ProyectosController.enviarCorreoProyecto]", error);
+            return res.status(500).json({ message: "Error al enviar correo" });
         }
     }
 }

@@ -41,4 +41,7 @@ router.put('/:id/pagos/:pagoId', ProyectosController.actualizarPagoProyecto);
 // DELETE - Eliminar un pago
 router.delete('/:id/pagos/:pagoId', ProyectosController.eliminarPagoProyecto);
 
+// POST - Enviar correo relacionado al proyecto (bienvenida, solicitud de usuarios, finalización)
+router.post('/:id/email/enviar', ProyectosController.enviarCorreoProyecto);
+
 export default router;
