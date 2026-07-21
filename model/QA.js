@@ -128,6 +128,41 @@ export async function reorderPrioridades(orderedIds) {
     );
 }
 
+// ─── Estados de versión ─────────────────────────────────────────────────────
+
+export async function getVersionEstados() {
+    return db().ejecutarQuery(
+        `SELECT * FROM qa_version_estados WHERE activo = 1 ORDER BY orden`, []
+    );
+}
+
+export async function createVersionEstado({ nombre, color_hex, es_aprobado, es_rechazo }) {
+    const [maxRow] = await db().ejecutarQuery(
+        `SELECT COALESCE(MAX(orden),0)+1 AS next FROM qa_version_estados`, []
+    ) ?? [{ next: 1 }];
+    return db().ejecutarQuery(
+        `INSERT INTO qa_version_estados (nombre, color_hex, orden, es_aprobado, es_rechazo) VALUES (?, ?, ?, ?, ?)`,
+        [nombre, color_hex ?? '#6b7280', maxRow?.next ?? 1, es_aprobado ? 1 : 0, es_rechazo ? 1 : 0]
+    );
+}
+
+export async function deleteVersionEstado(id) {
+    return db().ejecutarQuery(
+        `UPDATE qa_version_estados SET activo = 0 WHERE id_estado_version = ?`, [id]
+    );
+}
+
+export async function reorderVersionEstados(orderedIds) {
+    if (!orderedIds.length) return;
+    const cases  = orderedIds.map(() => `WHEN ? THEN ?`).join(' ');
+    const params = orderedIds.flatMap((id, i) => [id, i + 1]);
+    const ids    = orderedIds.map(() => '?').join(',');
+    await db().ejecutarQuery(
+        `UPDATE qa_version_estados SET orden = CASE id_estado_version ${cases} END WHERE id_estado_version IN (${ids})`,
+        [...params, ...orderedIds]
+    );
+}
+
 // ─── Etiquetas ────────────────────────────────────────────────────────────────
 
 export async function getEtiquetas() {
@@ -148,14 +183,16 @@ export async function deleteEtiqueta(id) {
 // ─── Versiones ────────────────────────────────────────────────────────────────
 
 export async function getVersiones() {
-    return db().ejecutarQuery(
+    const versiones = await db().ejecutarQuery(
         `SELECT v.*,
                 p.nombre AS proyecto_nombre,
+                ve.nombre AS estado_nombre, ve.color_hex AS estado_color,
                 COUNT(c.id_caso) AS total_casos,
                 SUM(CASE WHEN e.es_aprobado = 1 THEN 1 ELSE 0 END) AS casos_aprobados,
                 SUM(CASE WHEN e.es_rechazo  = 1 THEN 1 ELSE 0 END) AS casos_rechazados
          FROM qa_versiones v
          LEFT JOIN proyectos p ON v.id_proyecto = p.id_proyecto
+         LEFT JOIN qa_version_estados ve ON v.id_estado_version = ve.id_estado_version
          LEFT JOIN qa_casos c ON c.id_version = v.id_version AND c.eliminado_en IS NULL
          LEFT JOIN qa_estados e ON c.id_estado = e.id_estado
          WHERE v.eliminado_en IS NULL
@@ -163,22 +200,39 @@ export async function getVersiones() {
          ORDER BY v.creado_en DESC`,
         []
     );
+
+    // Distribución de casos por columna del tablero, para pintar el desglose en cada tarjeta de versión.
+    const distribucion = await db().ejecutarQuery(
+        `SELECT c.id_version, c.id_estado, COUNT(*) AS cantidad
+         FROM qa_casos c
+         WHERE c.eliminado_en IS NULL
+         GROUP BY c.id_version, c.id_estado`,
+        []
+    );
+    const porVersion = {};
+    for (const row of (distribucion ?? [])) {
+        (porVersion[row.id_version] ??= []).push({ id_estado: row.id_estado, cantidad: row.cantidad });
+    }
+
+    return (versiones ?? []).map(v => ({ ...v, casos_por_estado: porVersion[v.id_version] ?? [] }));
 }
 
 export async function getVersionById(id) {
     const rows = await db().ejecutarQuery(
-        `SELECT v.*, p.nombre AS proyecto_nombre
+        `SELECT v.*, p.nombre AS proyecto_nombre,
+                ve.nombre AS estado_nombre, ve.color_hex AS estado_color
          FROM qa_versiones v
          LEFT JOIN proyectos p ON v.id_proyecto = p.id_proyecto
+         LEFT JOIN qa_version_estados ve ON v.id_estado_version = ve.id_estado_version
          WHERE v.id_version = ? AND v.eliminado_en IS NULL`,
         [id]
     );
     return rows?.[0] ?? null;
 }
 
-export async function createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo }) {
+export async function createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, id_estado_version, fecha_inicio, fecha_objetivo }) {
     const result = await db().ejecutarQuery(
-        `INSERT INTO qa_versiones (nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo)
+        `INSERT INTO qa_versiones (nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, id_estado_version, fecha_inicio, fecha_objetivo)
          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
         [nombre,
          tipo_contexto   ?? 'Actualizacion',
@@ -186,7 +240,7 @@ export async function createVersion({ nombre, tipo_contexto, nombre_producto, de
          descripcion     ?? null,
          id_proyecto     ?? null,
          version_tag     ?? null,
-         estado          ?? 'Planificado',
+         id_estado_version,
          fecha_inicio    ?? null,
          fecha_objetivo  ?? null]
     );
@@ -194,7 +248,7 @@ export async function createVersion({ nombre, tipo_contexto, nombre_producto, de
 }
 
 export async function updateVersion(id, campos) {
-    const permitidos = ['nombre','tipo_contexto','nombre_producto','descripcion','id_proyecto','version_tag','estado','fecha_inicio','fecha_objetivo'];
+    const permitidos = ['nombre','tipo_contexto','nombre_producto','descripcion','id_proyecto','version_tag','id_estado_version','fecha_inicio','fecha_objetivo'];
     const nullable   = new Set(['nombre_producto','descripcion','id_proyecto','version_tag','fecha_inicio','fecha_objetivo']);
     const sets = [], params = [];
     for (const [k, v] of Object.entries(campos)) {

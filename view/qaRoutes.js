@@ -26,6 +26,12 @@ router.get('/etiquetas',        QAController.listarEtiquetas);
 router.post('/etiquetas',       QAController.crearEtiqueta);
 router.delete('/etiquetas/:id', QAController.eliminarEtiqueta);
 
+// Estados de versión (rutas estáticas antes de /versiones/:id para que no las capture)
+router.get('/versiones/estados',           QAController.listarVersionEstados);
+router.post('/versiones/estados',          QAController.crearVersionEstado);
+router.patch('/versiones/estados/reorder', QAController.reorderVersionEstados);
+router.delete('/versiones/estados/:id',    QAController.eliminarVersionEstado);
+
 // Versiones
 router.get('/versiones',           QAController.listarVersiones);
 router.post('/versiones',          QAController.crearVersion);

@@ -166,6 +166,49 @@ export default class QAController {
         }
     }
 
+    // ─── Estados de versión ───────────────────────────────────────────────────
+
+    static async listarVersionEstados(_req, res) {
+        try {
+            res.json(await QA.getVersionEstados());
+        } catch {
+            res.status(500).json({ message: 'Error al obtener estados de versión QA' });
+        }
+    }
+
+    static async crearVersionEstado(req, res) {
+        try {
+            const { nombre, color_hex, es_aprobado, es_rechazo } = req.body;
+            if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
+            await QA.createVersionEstado({ nombre, color_hex, es_aprobado, es_rechazo });
+            const estados = await QA.getVersionEstados();
+            res.status(201).json({ ok: true, estados });
+        } catch {
+            res.status(500).json({ message: 'Error al crear estado de versión QA' });
+        }
+    }
+
+    static async eliminarVersionEstado(req, res) {
+        try {
+            await QA.deleteVersionEstado(req.params.id);
+            const estados = await QA.getVersionEstados();
+            res.json({ ok: true, estados });
+        } catch {
+            res.status(500).json({ message: 'Error al eliminar estado de versión QA' });
+        }
+    }
+
+    static async reorderVersionEstados(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ message: 'Se requiere un array de ids.' });
+            await QA.reorderVersionEstados(ids);
+            res.json({ ok: true });
+        } catch {
+            res.status(500).json({ message: 'Error al reordenar estados de versión QA' });
+        }
+    }
+
     // ─── Versiones ────────────────────────────────────────────────────────────
 
     static async listarVersiones(_req, res) {
@@ -188,9 +231,9 @@ export default class QAController {
 
     static async crearVersion(req, res) {
         try {
-            const { nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo } = req.body;
-            if (!nombre) return res.status(400).json({ message: 'nombre es requerido' });
-            const id = await QA.createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, estado, fecha_inicio, fecha_objetivo });
+            const { nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, id_estado_version, fecha_inicio, fecha_objetivo } = req.body;
+            if (!nombre || !id_estado_version) return res.status(400).json({ message: 'nombre e id_estado_version son requeridos' });
+            const id = await QA.createVersion({ nombre, tipo_contexto, nombre_producto, descripcion, id_proyecto, version_tag, id_estado_version, fecha_inicio, fecha_objetivo });
             const version = await QA.getVersionById(id);
             emitUpdate('ncf:update');
             res.status(201).json({ ok: true, id_version: id, version });
