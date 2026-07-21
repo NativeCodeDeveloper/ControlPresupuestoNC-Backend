@@ -81,6 +81,13 @@ export default class SociosController {
             }
 
             const socio = new Socios();
+            const sumaOtros = await socio.getSumaPorcentajesActivos();
+            if (sumaOtros + pctNum > 100) {
+                return res.status(409).json({
+                    message: `No se puede asignar ${pctNum}%: los demás socios activos ya suman ${sumaOtros}% (disponible: ${Math.max(0, 100 - sumaOtros)}%).`
+                });
+            }
+
             const resultado = await socio.insertSocio(nombre, porcentaje_participacion, email, telefono);
             emitUpdate('ncf:update');
             return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
@@ -109,8 +116,19 @@ export default class SociosController {
             if (!id || !nombre || porcentaje_participacion === undefined) {
                 return res.status(404).json({ message: "Faltan datos requeridos" });
             }
+            const pctNum = Number(porcentaje_participacion);
+            if (!Number.isFinite(pctNum) || pctNum < 0 || pctNum > 100) {
+                return res.status(400).json({ message: "porcentaje_participacion debe ser un número entre 0 y 100" });
+            }
 
             const socio = new Socios();
+            const sumaOtros = await socio.getSumaPorcentajesActivos(id);
+            if (sumaOtros + pctNum > 100) {
+                return res.status(409).json({
+                    message: `No se puede asignar ${pctNum}%: los demás socios activos ya suman ${sumaOtros}% (disponible: ${Math.max(0, 100 - sumaOtros)}%).`
+                });
+            }
+
             const resultado = await socio.updateSocio(id, nombre, porcentaje_participacion, email, telefono);
             emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });
@@ -164,8 +182,19 @@ export default class SociosController {
             if (!id || porcentajeFinal === undefined) {
                 return res.status(400).json({ message: "Faltan datos requeridos" });
             }
+            const pctNum = Number(porcentajeFinal);
+            if (!Number.isFinite(pctNum) || pctNum < 0 || pctNum > 100) {
+                return res.status(400).json({ message: "El porcentaje debe ser un número entre 0 y 100" });
+            }
 
             const socio = new Socios();
+            const sumaOtros = await socio.getSumaPorcentajesActivos(id);
+            if (sumaOtros + pctNum > 100) {
+                return res.status(409).json({
+                    message: `No se puede asignar ${pctNum}%: los demás socios activos ya suman ${sumaOtros}% (disponible: ${Math.max(0, 100 - sumaOtros)}%).`
+                });
+            }
+
             const resultado = await socio.updatePorcentaje(id, porcentajeFinal);
             emitUpdate('ncf:update');
             return res.json({ ok: true, resultado });

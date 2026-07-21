@@ -153,6 +153,27 @@ export default class Socios {
         }
     }
 
+    // SUMA DE PORCENTAJES DE SOCIOS ACTIVOS (excluyendo opcionalmente un id — para validar
+    // que el total nunca supere 100% al crear/editar sin bloquear al socio que se está editando)
+    async getSumaPorcentajesActivos(excludeId = null) {
+        const conexion = DataBase.getInstance();
+        try {
+            const hasActivo = await hasSociosColumn(conexion, "activo");
+            const idColumn = await getSociosIdColumn(conexion);
+            const where = hasActivo ? ["activo = 1"] : [`nombre NOT LIKE ?`];
+            const params = hasActivo ? [] : [`${SOFT_DELETE_PREFIX}%`];
+            if (excludeId !== null && excludeId !== undefined) {
+                where.push(`${idColumn} != ?`);
+                params.push(excludeId);
+            }
+            const query = `SELECT COALESCE(SUM(porcentaje_participacion), 0) AS total FROM socios WHERE ${where.join(" AND ")}`;
+            const [row] = await conexion.ejecutarQuery(query, params);
+            return Number(row?.total || 0);
+        } catch (error) {
+            throw new Error('Error al calcular la suma de porcentajes de socios');
+        }
+    }
+
     // ACTUALIZAR SOLO PORCENTAJE
     async updatePorcentaje(id, porcentaje_participacion) {
         const conexion = DataBase.getInstance();
