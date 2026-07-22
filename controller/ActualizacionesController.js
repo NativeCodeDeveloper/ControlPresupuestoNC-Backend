@@ -5,35 +5,76 @@ const SENDER_NAME  = process.env.EMAIL_SENDER_NAME   || 'NativeCode';
 const SENDER_EMAIL = process.env.BILLING_REMINDER_TO || process.env.CORREO_RECEPTOR;
 
 function buildHtml(titulo, mensaje, nombreCliente) {
+    const safe = (s) => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const safeTitulo = safe(titulo);
+    const safeNombre = safe(nombreCliente);
+    const safeMensaje = safe(mensaje).replace(/\n/g, '<br>');
+    const year = new Date().getFullYear();
+
     return `<!DOCTYPE html>
 <html lang="es">
-<head><meta charset="UTF-8"><style>
-  body{font-family:system-ui,sans-serif;background:#0f172a;margin:0;padding:0}
-  .wrap{max-width:580px;margin:40px auto;background:#1e293b;border-radius:16px;overflow:hidden;border:1px solid #334155}
-  .head{background:linear-gradient(135deg,#0f2456,#1a4db8);padding:28px 32px}
-  .head h1{color:#fff;font-size:20px;margin:0;font-weight:700}
-  .head p{color:#bfcfff;font-size:12px;margin:4px 0 0}
-  .body{padding:28px 32px;color:#e2e8f0}
-  .body h2{color:#4f8ef7;font-size:16px;margin:0 0 14px;border-bottom:1px solid #334155;padding-bottom:10px}
-  .msg{background:#0f172a;border-left:3px solid #1a4db8;border-radius:6px;padding:14px 16px;font-size:14px;white-space:pre-wrap;line-height:1.6}
-  .footer{padding:20px 32px;border-top:1px solid #334155;text-align:center;font-size:11px;color:#64748b}
-</style></head>
-<body>
-  <div class="wrap">
-    <div class="head">
-      <h1>Actualización del Sistema</h1>
-      <p>NativeCode · Agenda Clínica</p>
-    </div>
-    <div class="body">
-      ${nombreCliente ? `<p style="margin:0 0 16px;font-size:14px">Estimado/a <strong>${nombreCliente}</strong>,</p>` : ''}
-      <h2>${titulo}</h2>
-      <div class="msg">${mensaje.replace(/\n/g, '<br>')}</div>
-      <p style="margin:18px 0 0;font-size:13px;color:#94a3b8">
-        Ante cualquier consulta, responde a este correo o contáctanos directamente.
-      </p>
-    </div>
-    <div class="footer">NativeCode · Agenda Clínica · Plataforma de gestión médica</div>
-  </div>
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light">
+</head>
+<body style="margin:0;padding:0;background:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;">
+
+  <table width="100%" cellpadding="0" cellspacing="0" role="presentation" style="background:#f2f2f7;padding:44px 16px 56px;">
+    <tr><td align="center">
+
+      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
+             style="max-width:600px;width:100%;background:#ffffff;border-radius:16px;
+                    box-shadow:0 1px 4px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.07);overflow:hidden;">
+
+        <!-- Header / marca -->
+        <tr>
+          <td style="padding:36px 48px 24px;">
+            <img src="https://nativecode-finance.agendaclinicas.cl/logo_template_negro.png" alt="NativeCode" width="170" style="display:block;max-width:170px;height:auto;margin:0 0 18px;">
+            <h1 style="margin:0;font-size:22px;font-weight:700;color:#1d1d1f;letter-spacing:-.4px;line-height:1.3;">
+              ${safeTitulo}
+            </h1>
+          </td>
+        </tr>
+
+        <tr><td style="padding:0 48px;">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="border-top:1px solid #e5e5ea;"></td></tr></table>
+        </td></tr>
+
+        <!-- Cuerpo -->
+        <tr>
+          <td style="padding:28px 48px 8px;">
+            ${nombreCliente ? `<p style="margin:0 0 18px;font-size:14.5px;color:#3a3a3c;">Estimado/a <strong>${safeNombre}</strong>,</p>` : ''}
+            <p style="margin:0;font-size:14.5px;line-height:1.85;color:#3a3a3c;">${safeMensaje}</p>
+          </td>
+        </tr>
+
+        <tr><td style="padding:16px 48px 0;">
+          <table width="100%" cellpadding="0" cellspacing="0" role="presentation"><tr><td style="border-top:1px solid #e5e5ea;"></td></tr></table>
+        </td></tr>
+
+        <!-- Contacto -->
+        <tr>
+          <td style="padding:22px 48px 30px;">
+            <p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">
+              Ante cualquier consulta, responde a este correo o contáctanos directamente.
+            </p>
+          </td>
+        </tr>
+
+        <!-- Footer -->
+        <tr>
+          <td style="background:#f9f9fb;border-top:1px solid #e5e5ea;padding:18px 48px;">
+            <p style="margin:0;font-size:11.5px;color:#aeaeb2;text-align:center;letter-spacing:.01em;">
+              NativeCode SPA &nbsp;·&nbsp; Santiago de Chile &nbsp;·&nbsp; © ${year}
+            </p>
+          </td>
+        </tr>
+
+      </table>
+    </td></tr>
+  </table>
+
 </body>
 </html>`;
 }
@@ -51,7 +92,7 @@ async function enviarADestinatarios(actualizacion) {
             senderName:  SENDER_NAME,
             senderEmail: SENDER_EMAIL,
             to:          dest.email,
-            subject:     `[Agenda Clínica] ${actualizacion.titulo}`,
+            subject:     actualizacion.titulo,
             htmlContent: buildHtml(actualizacion.titulo, actualizacion.mensaje, dest.nombre),
             textContent: `${actualizacion.titulo}\n\n${actualizacion.mensaje}`,
             logPrefix:   '[ACTUALIZACIÓN]',
