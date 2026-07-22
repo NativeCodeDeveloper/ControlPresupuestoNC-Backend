@@ -30,7 +30,7 @@ function buildHtml({ subject, bodyText }) {
         <!-- Header / marca -->
         <tr>
           <td style="padding:36px 48px 24px;">
-            <img src="https://nativecode-finance.agendaclinicas.cl/logo_template_negro.png" alt="NativeCode" width="150" style="display:block;max-width:150px;height:auto;margin:0 0 18px;">
+            <img src="https://nativecode-finance.agendaclinicas.cl/logo_template_negro.png" alt="NativeCode" width="170" style="display:block;max-width:170px;height:auto;margin:0 0 18px;">
             <p style="margin:0 0 22px;font-size:10.5px;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:#8b5cf6;">
               Ingeniería de Software
             </p>
