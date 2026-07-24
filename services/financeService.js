@@ -158,7 +158,11 @@ function fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex) {
     if (end && end < periodStart) return false;
     if (start && start > periodEnd) return false;
 
-    const dueDate = computeNextFixedDueDate(cost, periodStart);
+    // Calendario propio del costo (fecha_inicio + frecuencia), NO el próximo
+    // pendiente de pago — así un costo sigue contando en el mes que le
+    // corresponde aunque ya se haya registrado el pago (y no se "recalculan"
+    // mal los meses anteriores cada vez que se paga uno nuevo).
+    const dueDate = computeScheduledDueDate(cost, periodStart);
     if (!dueDate) return false;
     return dueDate >= periodStart && dueDate <= periodEnd;
 }
@@ -174,43 +178,29 @@ function fixedCostIsActiveInPeriod(cost, periodYear, periodMonthIndex) {
     return true;
 }
 
-function computeNextFixedDueDate(cost, referenceDate = new Date()) {
+/**
+ * computeScheduledDueDate - Vencimiento del costo fijo según SU PROPIO calendario
+ * (fecha_inicio + frecuencia + día de pago), iterando siempre desde fecha_inicio.
+ * A propósito NO mira fecha_ultimo_pago: esta función responde "¿cuándo le
+ * corresponde vencer este costo en tal período?" de forma estable para cualquier
+ * período (pasado, presente o futuro), sin importar qué pagos se hayan
+ * registrado después. Es la que se debe usar para calcular gasto histórico/total
+ * de un período (fixedCostOccursInPeriod) — nunca para decidir si mostrar el
+ * botón de "pagar" (para eso está computeNextFixedDueDate).
+ */
+function computeScheduledDueDate(cost, referenceDate = new Date()) {
     const ref = normalizeDate(referenceDate);
     const start = normalizeDate(cost?.fecha_inicio) || ref;
     const end = normalizeDate(cost?.fecha_fin);
     const paymentDay = Number(cost?.fecha_pago || start.getDate());
     const stepMonths = Math.max(1, Number(getFrequencyStepMonths(cost?.frecuencia) || 1));
 
-    let due;
-
-    // Si existe fecha_ultimo_pago, el punto de partida es un ciclo después de ese pago —
-    // pero hay que seguir avanzando (igual que la rama sin fecha_ultimo_pago) hasta alcanzar
-    // el período consultado. Sin este bucle, la función siempre devolvía la MISMA fecha
-    // (fecha_ultimo_pago + 1 ciclo) sin importar qué período se estuviera consultando, así
-    // que un costo recurrente "desaparecía" de todas las proyecciones futuras salvo el mes
-    // inmediatamente siguiente al último pago registrado.
-    const ultimoPago = normalizeDate(cost?.fecha_ultimo_pago);
-    if (ultimoPago) {
-        const moved = addMonths(ultimoPago.getFullYear(), ultimoPago.getMonth(), stepMonths);
-        due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
-
-        let guard = 0;
-        while (due < ref && guard < 600) {
-            const advanced = addMonths(due.getFullYear(), due.getMonth(), stepMonths);
-            due = buildDateInMonth(advanced.year, advanced.monthIndex, paymentDay);
-            guard += 1;
-        }
-        if (guard >= 600) return null;
-        if (end && due > end) return null;
-        return due;
-    }
-
-    // Sin fecha_ultimo_pago: calcular iterando desde fecha_inicio (lógica original).
     // Regla de negocio:
     // El primer vencimiento puede ocurrir en el mismo mes de inicio para TODA frecuencia.
     // Si el día de pago >= día de inicio → primer vencimiento en el mes de inicio.
     // Si el día de pago < día de inicio → primer vencimiento en el siguiente ciclo.
     const firstDue = buildDateInMonth(start.getFullYear(), start.getMonth(), paymentDay);
+    let due;
     if (firstDue >= start) {
         due = firstDue;
     } else {
@@ -225,10 +215,40 @@ function computeNextFixedDueDate(cost, referenceDate = new Date()) {
         guard += 1;
     }
 
-    if (guard >= 600) {
-        return null;
+    if (guard >= 600) return null;
+    if (end && due > end) return null;
+    return due;
+}
+
+/**
+ * computeNextFixedDueDate - Próximo vencimiento PENDIENTE de pago, para alertas
+ * ("vence en X días") y para decidir si mostrar el botón de "pagar". A diferencia
+ * de computeScheduledDueDate, sí considera fecha_ultimo_pago: si el ciclo actual
+ * ya se pagó, salta directo al siguiente ciclo. Por eso no sirve para calcular
+ * cuánto se gastó en un período pasado — usar computeScheduledDueDate para eso.
+ */
+function computeNextFixedDueDate(cost, referenceDate = new Date()) {
+    const ref = normalizeDate(referenceDate);
+    const end = normalizeDate(cost?.fecha_fin);
+    const paymentDay = Number(cost?.fecha_pago || normalizeDate(cost?.fecha_inicio)?.getDate() || ref.getDate());
+    const stepMonths = Math.max(1, Number(getFrequencyStepMonths(cost?.frecuencia) || 1));
+
+    const ultimoPago = normalizeDate(cost?.fecha_ultimo_pago);
+    if (!ultimoPago) {
+        return computeScheduledDueDate(cost, referenceDate);
     }
 
+    let due;
+    const moved = addMonths(ultimoPago.getFullYear(), ultimoPago.getMonth(), stepMonths);
+    due = buildDateInMonth(moved.year, moved.monthIndex, paymentDay);
+
+    let guard = 0;
+    while (due < ref && guard < 600) {
+        const advanced = addMonths(due.getFullYear(), due.getMonth(), stepMonths);
+        due = buildDateInMonth(advanced.year, advanced.monthIndex, paymentDay);
+        guard += 1;
+    }
+    if (guard >= 600) return null;
     if (end && due > end) return null;
     return due;
 }
