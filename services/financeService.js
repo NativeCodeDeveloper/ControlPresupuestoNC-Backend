@@ -606,7 +606,7 @@ async function getInvestmentSums(conexion, startDate, endDate) {
     }
 }
 
-async function getRealtimeAssignedFunds(conexion) {
+async function getRealtimeAssignedFunds(conexion, preloaded = {}) {
     const now = new Date();
     const currentYear = now.getFullYear();
     const currentMonth = now.getMonth() + 1;
@@ -642,7 +642,7 @@ async function getRealtimeAssignedFunds(conexion) {
     );
 
     // Se calcula el mes actual en tiempo real para reflejar de inmediato nuevos ingresos/gastos.
-    const currentEstimate = await estimateCurrentMonthAssignedFunds(conexion);
+    const currentEstimate = await estimateCurrentMonthAssignedFunds(conexion, preloaded);
 
     return {
         reinversion: historicReinvestment + Number(currentEstimate?.reinversion || 0),
@@ -650,7 +650,7 @@ async function getRealtimeAssignedFunds(conexion) {
     };
 }
 
-async function estimateCurrentMonthAssignedFunds(conexion) {
+async function estimateCurrentMonthAssignedFunds(conexion, preloaded = {}) {
     const now = new Date();
     const year = now.getFullYear();
     const month = now.getMonth() + 1;
@@ -671,7 +671,9 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
         [{}]
     );
 
-    const fixedCostsData = await getFixedCostsData(conexion);
+    // Reutiliza fixedCostsData/config ya cargados por el caller (ej. getFinancialSummary)
+    // en vez de re-consultarlos — mismos datos, sin round-trips duplicados.
+    const fixedCostsData = preloaded.fixedCostsData ?? await getFixedCostsData(conexion);
 
     const variable = await getVariableCostsTotalInRange(conexion, startDate, endDate);
 
@@ -685,7 +687,7 @@ async function estimateCurrentMonthAssignedFunds(conexion) {
     const income = Number(ingresos?.total || 0);
     const base = Math.max(0, income - totalFixedCosts - variable);
 
-    const config = await getFinancialConfigRow(conexion);
+    const config = preloaded.config ?? await getFinancialConfigRow(conexion);
 
     const pctEmerg = Number(config?.porcentaje_fondo_emergencia || 0);
     const pctReinv = Number(config?.porcentaje_reinversion || 0);
@@ -721,9 +723,11 @@ export function getPeriodFromQuery(query = {}) {
     };
 }
 
-async function getFondosSaldos(conexion) {
-    const assigned = await getRealtimeAssignedFunds(conexion);
-    const used = await getInvestmentSums(conexion);
+async function getFondosSaldos(conexion, preloaded = {}) {
+    const [assigned, used] = await Promise.all([
+        getRealtimeAssignedFunds(conexion, preloaded),
+        getInvestmentSums(conexion)
+    ]);
 
     return {
         reinversion: {
@@ -1088,11 +1092,27 @@ async function getPartnersAvailableAccumulated(conexion, targetPeriod, context =
 export async function getFinancialSummary(query = {}) {
     const conexion = DataBase.getInstance();
     const period = getPeriodFromQuery(query);
-    const config = await getFinancialConfigRow(conexion);
-    const fixedCostsData = await getFixedCostsData(conexion);
-    const retirosFilter = await getRetirosNotDeletedFilter(conexion);
-    const variableFilter = await getCostosVariablesNotDeletedFilter(conexion);
-    const fixedFilter = await getCostosFijosNotDeletedFilter(conexion);
+
+    // Todo lo de abajo es independiente entre sí (ninguno depende del resultado de otro),
+    // así que se piden en paralelo en vez de uno tras otro.
+    const [
+        config,
+        fixedCostsData,
+        retirosFilter,
+        variableFilter,
+        fixedFilter,
+        partners,
+        partnersWithdrawalsMap
+    ] = await Promise.all([
+        getFinancialConfigRow(conexion),
+        getFixedCostsData(conexion),
+        getRetirosNotDeletedFilter(conexion),
+        getCostosVariablesNotDeletedFilter(conexion),
+        getCostosFijosNotDeletedFilter(conexion),
+        getActivePartners(conexion),
+        getPartnersWithdrawalsMap(conexion, period.startDate, period.endDate)
+    ]);
+
     const summaryContext = {
         config,
         fixedCostsData,
@@ -1100,13 +1120,13 @@ export async function getFinancialSummary(query = {}) {
         variableFilter,
         fixedFilter
     };
-    const core = await getPeriodFinancialCore(conexion, period, summaryContext);
 
-    const inversionesPeriodo = await getInvestmentSums(conexion, period.startDate, period.endDate);
-    const accumulatedPartnersAvailable = await getPartnersAvailableAccumulated(conexion, period, summaryContext);
+    const [core, inversionesPeriodo, accumulatedPartnersAvailable] = await Promise.all([
+        getPeriodFinancialCore(conexion, period, summaryContext),
+        getInvestmentSums(conexion, period.startDate, period.endDate),
+        getPartnersAvailableAccumulated(conexion, period, summaryContext)
+    ]);
 
-    const partners = await getActivePartners(conexion);
-    const partnersWithdrawalsMap = await getPartnersWithdrawalsMap(conexion, period.startDate, period.endDate);
     const partnersAvailability = partners.map((partner) => {
         const partnerId = Number(partner?.id);
         const percentage = Number(partner?.porcentaje_participacion || 0);
@@ -1130,7 +1150,7 @@ export async function getFinancialSummary(query = {}) {
     // o cuando existen retiros históricos de socios inactivos.
     const totalPartnersAvailable = core.partnersAvailable;
 
-    const fondos = await getFondosSaldos(conexion);
+    const fondos = await getFondosSaldos(conexion, { config, fixedCostsData });
 
     return {
         period,

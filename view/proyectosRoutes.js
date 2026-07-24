@@ -10,6 +10,9 @@ router.param('id', (req, res, next, val) =>
 // GET - Obtener todos los proyectos
 router.get('/', ProyectosController.obtenerProyectos);
 
+// GET - Pagos de varios proyectos en una sola respuesta (debe ir antes de /:id)
+router.get('/pagos-batch', ProyectosController.obtenerPagosBatch);
+
 // GET - Obtener un proyecto por ID
 router.get('/:id', ProyectosController.obtenerProyectoPorId);
 

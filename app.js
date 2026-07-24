@@ -54,7 +54,7 @@ import { ejecutarRecordatoriosCobro } from "./services/billingReminderService.js
 import { ejecutarRecordatorioF29 } from "./services/f29ReminderService.js";
 import { ejecutarRecordatoriosCliente } from "./services/clientReminderService.js";
 import calendarioRoutes from "./view/calendarioRoutes.js";
-import { ejecutarRecordatoriosCalendario } from "./services/calendarioReminderService.js";
+import { ejecutarRecordatoriosCalendario, limpiarNotificacionesAntiguas } from "./services/calendarioReminderService.js";
 import dteRoutes from "./view/dteRoutes.js";
 import { actualizarEstadosPendientes } from "./services/dteService.js";
 
@@ -295,6 +295,16 @@ httpServer.listen(PORT, () => {
 
     if (typeof calendarioHandle.unref === "function") {
         calendarioHandle.unref();
+    }
+
+    // CRON NOTIFICACIONES: limpiar notificaciones in-app leídas/antiguas — cada 30 min.
+    // Antes esto corría en cada poll del frontend (cada ~30-40s por cliente activo).
+    const notifCleanupHandle = setInterval(() => {
+        limpiarNotificacionesAntiguas();
+    }, 30 * 60 * 1000);
+
+    if (typeof notifCleanupHandle.unref === "function") {
+        notifCleanupHandle.unref();
     }
 
     // CRON DTE: actualizar estado SII de documentos "enviado" — cada hora.

@@ -235,7 +235,10 @@ export default class Proyectos {
             return await conexion.ejecutarQuery(query, vals);
         } catch (error) {
             console.error('[Proyectos.insertProyecto]', error);
-            throw new Error('Error al crear proyecto en la base de datos');
+            const wrapped = new Error('Error al crear proyecto en la base de datos');
+            wrapped.code = error.code;
+            wrapped.sqlMessage = error.sqlMessage;
+            throw wrapped;
         }
     }
 
@@ -390,6 +393,37 @@ export default class Proyectos {
         } catch (error) {
             console.error('[Proyectos.selectProyectoPagos]', error);
             throw new Error('Error al obtener pagos del proyecto');
+        }
+    }
+
+    // Pagos de varios proyectos en una sola query (evita N+1 al listar todos los proyectos)
+    async selectProyectoPagosBatch(proyectoIds) {
+        const conexion = DataBase.getInstance();
+        const ids = (Array.isArray(proyectoIds) ? proyectoIds : [])
+            .map((id) => Number(id))
+            .filter((id) => Number.isInteger(id) && id > 0);
+        if (!ids.length) return {};
+
+        try {
+            const pagoIdColumn = await getProyectoPagoIdColumn(conexion);
+            const proyectoFkColumn = await getProyectoPagoFkColumn(conexion);
+            const placeholders = ids.map(() => "?").join(", ");
+            const query = `SELECT *, ${pagoIdColumn} AS id, ${proyectoFkColumn} AS proyecto_id
+                           FROM proyecto_pagos
+                           WHERE ${proyectoFkColumn} IN (${placeholders})
+                           ORDER BY fecha_pago DESC`;
+            const resultado = await conexion.ejecutarQuery(query, ids);
+
+            const porProyecto = {};
+            for (const pago of (Array.isArray(resultado) ? resultado : [])) {
+                const key = pago.proyecto_id;
+                if (!porProyecto[key]) porProyecto[key] = [];
+                porProyecto[key].push(pago);
+            }
+            return porProyecto;
+        } catch (error) {
+            console.error('[Proyectos.selectProyectoPagosBatch]', error);
+            throw new Error('Error al obtener pagos de los proyectos');
         }
     }
 

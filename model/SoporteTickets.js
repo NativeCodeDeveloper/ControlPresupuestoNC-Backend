@@ -1,4 +1,5 @@
 import DataBase from '../config/Database.js';
+import { parsePagination } from '../utils/pagination.js';
 
 const db = () => DataBase.getInstance();
 
@@ -74,7 +75,7 @@ export async function reorderEstados(orderedIds) {
 
 // ─── Tickets — CRUD ───────────────────────────────────────────────────────────
 
-export async function getTickets({ estado, prioridad, responsable } = {}) {
+export async function getTickets({ estado, prioridad, responsable, ...query } = {}) {
     const where = ['t.eliminado_en IS NULL'];
     const params = [];
 
@@ -82,8 +83,11 @@ export async function getTickets({ estado, prioridad, responsable } = {}) {
     if (prioridad)   { where.push('t.prioridad = ?');      params.push(prioridad); }
     if (responsable) { where.push('t.id_responsable = ?'); params.push(responsable); }
 
-    return db().ejecutarQuery(
-        `SELECT t.*,
+    // Cota defensiva: hoy el volumen es bajo (la vista Kanban quiere verlos todos),
+    // pero sin límite esto crecería sin control. defaultLimit alto para no afectar
+    // el uso actual; ?all=true o ?limit=/?page= quedan disponibles si se necesita.
+    const pagination = parsePagination(query, { defaultLimit: 500, maxLimit: 2000 });
+    let sql = `SELECT t.*,
                 e.nombre AS estado_nombre, e.color_hex AS estado_color, e.es_cierre,
                 s.nombre AS responsable_nombre,
                 p.nombre AS proyecto_nombre
@@ -92,9 +96,13 @@ export async function getTickets({ estado, prioridad, responsable } = {}) {
          LEFT JOIN socios           s ON t.id_responsable = s.id_socio
          LEFT JOIN proyectos        p ON t.id_proyecto    = p.id_proyecto
          WHERE ${where.join(' AND ')}
-         ORDER BY t.creado_en DESC`,
-        params
-    );
+         ORDER BY t.creado_en DESC`;
+    if (pagination) {
+        sql += ' LIMIT ? OFFSET ?';
+        params.push(pagination.limit, pagination.offset);
+    }
+
+    return db().ejecutarQuery(sql, params);
 }
 
 export async function getTicketById(id) {

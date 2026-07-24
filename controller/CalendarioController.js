@@ -155,12 +155,10 @@ export default class CalendarioController {
 
     static async getNotificaciones(req, res) {
         try {
-            // Limpiar: eliminar notificaciones leídas o con más de 7 días
-            await db().ejecutarQuery(
-                `DELETE FROM notificaciones_inapp
-                 WHERE visto = 1 OR creado_en < DATE_SUB(NOW(), INTERVAL 7 DAY)`,
-                []
-            );
+            // La limpieza de notificaciones leídas/antiguas se movió a un cron
+            // aparte (limpiarNotificacionesAntiguas en calendarioReminderService.js)
+            // — antes corría un DELETE en cada poll (cada ~30-40s por cliente activo),
+            // generando contención de locks sin necesidad.
             const rows = await db().ejecutarQuery(
                 `SELECT * FROM notificaciones_inapp WHERE visto = 0 ORDER BY creado_en DESC LIMIT 50`,
                 []

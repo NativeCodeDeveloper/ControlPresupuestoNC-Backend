@@ -1,6 +1,7 @@
 import * as Synapse from '../model/Synapse.js';
 import ConfiguracionFinanciera from '../model/ConfiguracionFinanciera.js';
 import { sendBrevoEmail } from '../services/emailUtils.js';
+import { buildEmailHtml } from '../services/emailHtmlBuilder.js';
 import { emitUpdate } from '../config/socket.js';
 import { sendPushToAll } from '../services/pushService.js';
 import DataBase from '../config/Database.js';
@@ -277,107 +278,17 @@ export default class SynapseController {
             const recipients = to.split(',').map(e => e.trim()).filter(Boolean);
             if (!recipients.length) return res.status(400).json({ error: 'Email destinatario inválido.' });
 
-            const safeBody = body
-                .replace(/&/g, '&amp;')
-                .replace(/</g, '&lt;')
-                .replace(/>/g, '&gt;')
-                .replace(/\n/g, '<br>');
-
-            const year = new Date().getFullYear();
-
-            const safeSubject = subject.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-
-            const htmlContent = `<!DOCTYPE html>
-<html lang="es">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="color-scheme" content="light">
-</head>
-<body style="margin:0;padding:0;background:#f2f2f7;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Helvetica Neue',Arial,sans-serif;">
-
-  <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-         style="background:#f2f2f7;padding:44px 16px 56px;">
-    <tr><td align="center">
-
-      <!-- Card -->
-      <table width="100%" cellpadding="0" cellspacing="0" role="presentation"
-             style="max-width:660px;width:100%;background:#ffffff;border-radius:16px;
-                    box-shadow:0 1px 4px rgba(0,0,0,.06),0 6px 24px rgba(0,0,0,.07);
-                    overflow:hidden;">
-
-        <!-- Header -->
-        <tr>
-          <td style="padding:36px 52px 28px;">
-            <p style="margin:0 0 10px;font-size:11px;font-weight:700;letter-spacing:.1em;
-                      text-transform:uppercase;color:#8e8e93;">
-              NativeCode Finance
-            </p>
-            <h1 style="margin:0;font-size:26px;font-weight:700;color:#1d1d1f;
-                       letter-spacing:-.5px;line-height:1.25;">
-              ${safeSubject}
-            </h1>
-          </td>
-        </tr>
-
-        <!-- Divider -->
-        <tr>
-          <td style="padding:0 52px;">
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-              <tr><td style="border-top:1px solid #e5e5ea;"></td></tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Body -->
-        <tr>
-          <td style="padding:28px 52px 36px;">
-            <p style="margin:0;font-size:15px;line-height:1.8;color:#3a3a3c;font-weight:400;">
-              ${safeBody}
-            </p>
-          </td>
-        </tr>
-
-        <!-- Divider -->
-        <tr>
-          <td style="padding:0 52px;">
-            <table width="100%" cellpadding="0" cellspacing="0" role="presentation">
-              <tr><td style="border-top:1px solid #e5e5ea;"></td></tr>
-            </table>
-          </td>
-        </tr>
-
-        <!-- Contact -->
-        <tr>
-          <td style="padding:24px 52px 32px;">
-            <p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">
-              Para consultas, puede contactarnos en
-              <a href="mailto:ingenieria.software@nativecode.cl"
-                 style="color:#6366f1;text-decoration:none;font-weight:500;">
-                ingenieria.software@nativecode.cl
-              </a>
-              o al <strong style="color:#3a3a3c;">+56 9 3291 2943</strong>.
-            </p>
-          </td>
-        </tr>
-
-        <!-- Footer -->
-        <tr>
-          <td style="background:#f9f9fb;border-top:1px solid #e5e5ea;padding:18px 52px;">
-            <p style="margin:0;font-size:12px;color:#aeaeb2;text-align:center;letter-spacing:.01em;">
-              NativeCode Finance &nbsp;·&nbsp; Correo oficial &nbsp;·&nbsp; © ${year}
-            </p>
-          </td>
-        </tr>
-
-      </table>
-      <!-- /Card -->
-
-    </td></tr>
-  </table>
-
-</body>
-</html>`;
+            const htmlContent = buildEmailHtml({
+                eyebrow: 'NativeCode Finance',
+                title: subject,
+                bodyText: body,
+                contactHtml: `<p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">
+                  Para consultas, puede contactarnos en
+                  <a href="mailto:ingenieria.software@nativecode.cl" style="color:#6366f1;text-decoration:none;font-weight:500;">ingenieria.software@nativecode.cl</a>
+                  o al <strong style="color:#3a3a3c;">+56 9 3291 2943</strong>.
+                </p>`,
+                footerText: 'NativeCode Finance · Correo oficial',
+            });
 
             const results = await Promise.all(recipients.map(email =>
                 sendBrevoEmail({

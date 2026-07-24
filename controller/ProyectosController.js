@@ -177,24 +177,47 @@ export default class ProyectosController {
             const proyecto = new Proyectos();
 
             // Generar codigo_interno automáticamente si no viene o excede la longitud máxima (10 chars)
-            let codigoFinal = codigo_interno;
-            if (!codigoFinal || codigoFinal.length > 10) {
-                codigoFinal = await proyecto.getNextCodigoInterno(tipo_proyecto_id);
-            }
+            const autoGenerado = !codigo_interno || codigo_interno.length > 10;
+            let codigoFinal = autoGenerado
+                ? await proyecto.getNextCodigoInterno(tipo_proyecto_id)
+                : codigo_interno;
 
             const { afecto_iva } = req.body;
-            const resultado = await proyecto.insertProyecto(
-                codigoFinal, nombre, tipo_proyecto_id, estado_proyecto_id,
-                nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
-                profesion_cliente, monto_acordado,
-                fecha_creacion || new Date().toISOString().split('T')[0],
-                fecha_entrega || null, observaciones,
-                ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null,
-                url_cobro_mercadopago || null,
-                afecto_iva !== undefined ? afecto_iva : 1,
-                direccion_cliente || null,
-                comuna_cliente || null
-            );
+
+            // getNextCodigoInterno no bloquea filas: si dos creaciones caen casi
+            // simultáneas pueden calcular el mismo siguiente código. Reintentamos
+            // regenerándolo solo cuando el choque es en un código auto-generado
+            // (uk_proyectos_codigo_interno); si el código vino explícito del usuario,
+            // el conflicto es real y se informa tal cual.
+            let resultado;
+            for (let intento = 0; ; intento++) {
+                try {
+                    resultado = await proyecto.insertProyecto(
+                        codigoFinal, nombre, tipo_proyecto_id, estado_proyecto_id,
+                        nombre_cliente, rut_cliente, email_cliente, telefono_cliente,
+                        profesion_cliente, monto_acordado,
+                        fecha_creacion || new Date().toISOString().split('T')[0],
+                        fecha_entrega || null, observaciones,
+                        ciclo_facturacion || "Unico", fecha_inicio_servicio || null, fecha_proximo_pago || null,
+                        url_cobro_mercadopago || null,
+                        afecto_iva !== undefined ? afecto_iva : 1,
+                        direccion_cliente || null,
+                        comuna_cliente || null
+                    );
+                    break;
+                } catch (error) {
+                    const esChoqueCodigo = error.code === 'ER_DUP_ENTRY' && String(error.sqlMessage || '').includes('codigo_interno');
+                    if (autoGenerado && esChoqueCodigo && intento < 3) {
+                        codigoFinal = await proyecto.getNextCodigoInterno(tipo_proyecto_id);
+                        continue;
+                    }
+                    if (esChoqueCodigo) {
+                        return res.status(409).json({ message: `El código interno "${codigoFinal}" ya existe.` });
+                    }
+                    throw error;
+                }
+            }
+
             emitUpdate('ncf:update');
             return res.status(201).json({ ok: true, id_proyecto: resultado.insertId, codigo_interno: codigoFinal });
         } catch (error) {
@@ -326,6 +349,31 @@ export default class ProyectosController {
         } catch (error) {
             console.error("[ProyectosController.eliminarProyecto]", error);
             return res.status(500).json({ message: "Error al eliminar proyecto" });
+        }
+    }
+
+    /**
+     * obtenerPagosBatch - Pagos de varios proyectos en una sola respuesta, agrupados
+     * por id de proyecto. Evita el patrón N+1 de pedir GET /:id/pagos por cada
+     * proyecto de una lista (usado por la vista de Ingresos).
+     * Ruta: GET /api/proyectos/pagos-batch?ids=1,2,3
+     */
+    static async obtenerPagosBatch(req, res) {
+        try {
+            const ids = String(req.query.ids || "")
+                .split(",")
+                .map((v) => v.trim())
+                .filter(Boolean);
+            if (!ids.length) {
+                return res.status(400).json({ message: "Parámetro 'ids' requerido" });
+            }
+
+            const proyecto = new Proyectos();
+            const porProyecto = await proyecto.selectProyectoPagosBatch(ids);
+            return res.json(porProyecto);
+        } catch (error) {
+            console.error("[ProyectosController.obtenerPagosBatch]", error);
+            return res.status(500).json({ message: "Error al obtener pagos" });
         }
     }
 

@@ -98,3 +98,18 @@ export async function ejecutarRecordatoriosCalendario() {
         corriendo = false;
     }
 }
+
+// Limpieza de notificaciones in-app leídas/antiguas — antes corría en cada
+// GET /api/calendario/notificaciones/pendientes (cada ~30-40s por cliente activo),
+// generando un DELETE innecesario en ese hot path. Ahora es un cron aparte.
+export async function limpiarNotificacionesAntiguas() {
+    try {
+        await DataBase.getInstance().ejecutarQuery(
+            `DELETE FROM notificaciones_inapp
+             WHERE visto = 1 OR creado_en < DATE_SUB(NOW(), INTERVAL 7 DAY)`,
+            []
+        );
+    } catch (e) {
+        console.error('[CALENDARIO] Error limpiando notificaciones:', e.message);
+    }
+}

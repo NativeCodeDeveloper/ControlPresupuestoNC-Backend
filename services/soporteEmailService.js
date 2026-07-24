@@ -1,4 +1,5 @@
 import { sendBrevoEmail } from './emailUtils.js';
+import { buildEmailHtml } from './emailHtmlBuilder.js';
 
 const LOG = '[NEXUS]';
 
@@ -86,22 +87,17 @@ Equipo de Soporte — Agenda Clínica / NativeCode`
 
 // ─── HTML wrapper compartido ──────────────────────────────────────────────────
 
-function buildHtml({ numero_ticket, asunto, bodyText, accentColor = '#7c3aed' }) {
-    const lines = bodyText.split('\n').map(l => l.trim() === '' ? '<br/>' : `<p style="margin:0 0 8px">${l}</p>`).join('');
-    return `
-    <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;max-width:540px;margin:0 auto;background:#0f0f0f;border-radius:12px;overflow:hidden;">
-        <div style="background:${accentColor};padding:20px 24px;">
-            <p style="margin:0;color:#fff;font-size:11px;text-transform:uppercase;letter-spacing:0.1em;opacity:0.7;">NativeCode · Agenda Clínica — Soporte Técnico</p>
-            <h1 style="margin:6px 0 0;color:#fff;font-size:18px;font-weight:700;">${asunto}</h1>
-            <p style="margin:4px 0 0;color:#fff;font-size:12px;opacity:0.6;">Ticket N° ${numero_ticket}</p>
-        </div>
-        <div style="padding:24px;color:#ccc;font-size:13px;line-height:1.6;">
-            ${lines}
-        </div>
-        <div style="padding:12px 24px;border-top:1px solid #1f1f1f;">
-            <p style="margin:0;color:#555;font-size:11px;">NativeCode · Agenda Clínica · Plataforma de gestión médica</p>
-        </div>
-    </div>`;
+const CONTACT_HTML = `<p style="margin:0;font-size:13px;color:#6e6e73;line-height:1.7;">Ante cualquier consulta, responda directamente a este correo.</p>`;
+
+function buildHtml({ numero_ticket, asunto, bodyText }) {
+    return buildEmailHtml({
+        eyebrow: 'Soporte Técnico',
+        title: asunto,
+        subtitle: `Ticket N° ${numero_ticket}`,
+        bodyText,
+        contactHtml: CONTACT_HTML,
+        footerText: 'NativeCode · Agenda Clínica',
+    });
 }
 
 // ─── Funciones de envío ───────────────────────────────────────────────────────
@@ -113,14 +109,12 @@ export async function enviarApertura({ ticket, bodyText }) {
     const template = templateApertura({ ticket });
     const texto = bodyText ?? template.body;
 
-    const accentColor = ticket.prioridad === 'critica' ? '#ef4444' : ticket.prioridad === 'alta' ? '#f59e0b' : '#7c3aed';
-
     const ok = await sendBrevoEmail({
         senderName: 'Agenda Clínica Soporte',
         senderEmail,
         to: ticket.email_cliente,
         subject: template.subject,
-        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto, accentColor }),
+        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto }),
         textContent: texto,
         logPrefix: LOG
     });
@@ -168,7 +162,7 @@ export async function enviarCierre({ ticket, resolucion, bodyText }) {
         senderEmail,
         to: ticket.email_cliente,
         subject: template.subject,
-        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto, accentColor: '#6b7280' }),
+        htmlContent: buildHtml({ numero_ticket: ticket.numero_ticket, asunto: ticket.asunto, bodyText: texto }),
         textContent: texto,
         logPrefix: LOG
     });
