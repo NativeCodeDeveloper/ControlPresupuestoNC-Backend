@@ -1,5 +1,6 @@
 import DataBase from '../config/Database.js';
 import { formatearFecha, formatearMonto, sendBrevoEmail } from './emailUtils.js';
+import { generarICSBase64 } from './icsUtils.js';
 
 /**
  * SISTEMA DE RECORDATORIOS AL CLIENTE - NativeCode Finance
@@ -158,6 +159,22 @@ function buildTextContent({ proyecto, stage }) {
     return `${stage.etiqueta} — AgendaClinica\n\nEstimado/a ${nombre},\n\n${stage.mensaje}\n\nServicio: ${proyecto.nombre}\nMonto: ${formatearMonto(proyecto.monto_acordado)}\nFecha de pago: ${proyecto.fecha_proximo_pago}\n\n${stage.esSuspension ? 'Su servicio será suspendido si no regulariza el pago.\n\n' : ''}Para consultas: ingenieria.software@nativecode.cl · +56 9 3291 2943\n\nAgendaClinica · Desarrollado por NativeCode`;
 }
 
+function buildPaymentAttachment({ proyecto, stage }) {
+    // Solo tiene sentido invitar a un evento futuro/de hoy, no a uno ya vencido
+    if (stage.diff < 0) return [];
+
+    const ics = generarICSBase64({
+        uid: `pago-${proyecto.id_proyecto}-${proyecto.fecha_proximo_pago}@nativecode.cl`,
+        titulo: `Vencimiento de pago - ${proyecto.nombre}`,
+        descripcion: `Pago de ${formatearMonto(proyecto.monto_acordado)} para ${proyecto.nombre_cliente || 'Cliente'}.`,
+        fechaInicio: proyecto.fecha_proximo_pago,
+        todoElDia: true,
+        nombreCalendario: 'NativeCode',
+    });
+
+    return [{ content: ics, name: 'recordatorio-pago.ics' }];
+}
+
 async function marcarEnviado(conexion, idProyecto, col, fechaProximoPago) {
     try {
         await conexion.ejecutarQuery(
@@ -244,7 +261,8 @@ export async function ejecutarRecordatoriosCliente() {
                 subject: `${stage.asunto} — ${proyecto.nombre}`,
                 htmlContent: buildClientEmailHtml({ proyecto, stage }),
                 textContent: buildTextContent({ proyecto, stage }),
-                logPrefix: LOG
+                logPrefix: LOG,
+                attachments: buildPaymentAttachment({ proyecto, stage })
             });
 
             if (ok) {
