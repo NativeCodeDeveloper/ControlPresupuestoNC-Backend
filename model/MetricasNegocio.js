@@ -9,6 +9,17 @@ const CATEGORIAS_MARKETING = [4, 7]; // Marketing, Publicidad — mismo catálog
 
 const NOT_DELETED = `(observaciones IS NULL OR observaciones NOT LIKE '[ELIMINADO]#%')`;
 
+// Define qué cuenta como "cliente recurrente activo" en TODA la sección de Métricas
+// de Negocio — mismo criterio en MRR, Churn y "clientes nuevos" (CAC/ASP/Tendencia).
+// Un proyecto Único (trabajo puntual) no es un cliente SaaS adquirido, y activo=0 /
+// estado Cancelado-Desactivada ya no cuenta aunque su fecha_creacion caiga en el período.
+const CLIENTE_RECURRENTE_FILTER = `
+    activo = 1
+    AND ciclo_facturacion != 'Unico'
+    AND id_estado_proyecto NOT IN (${ESTADO_CANCELADO}, ${ESTADO_DESACTIVADA})
+    AND ${NOT_DELETED}
+`;
+
 const MRR_CASE = `
     CASE ciclo_facturacion
         WHEN 'Mensual'    THEN monto_acordado
@@ -24,10 +35,7 @@ export async function getMRRyARPA() {
     const rows = await db().ejecutarQuery(`
         SELECT nombre_cliente, SUM(${MRR_CASE}) AS mrr_cliente
         FROM proyectos
-        WHERE activo = 1
-          AND ciclo_facturacion != 'Unico'
-          AND id_estado_proyecto NOT IN (${ESTADO_CANCELADO}, ${ESTADO_DESACTIVADA})
-          AND ${NOT_DELETED}
+        WHERE ${CLIENTE_RECURRENTE_FILTER}
         GROUP BY nombre_cliente
     `, []);
 
@@ -100,7 +108,7 @@ export async function getCAC(startDate, endDate) {
         FROM (
             SELECT nombre_cliente, MIN(fecha_creacion) AS primera_fecha
             FROM proyectos
-            WHERE ${NOT_DELETED}
+            WHERE ${CLIENTE_RECURRENTE_FILTER}
             GROUP BY nombre_cliente
             HAVING primera_fecha BETWEEN ? AND ?
         ) nuevos
@@ -114,8 +122,8 @@ export async function getCAC(startDate, endDate) {
     return { gastoMarketing, clientesNuevos, cac };
 }
 
-// ASP — MRR normalizado promedio del proyecto de alta de cada cliente nuevo
-// del período, excluyendo altas con ciclo_facturacion 'Unico'.
+// ASP — MRR normalizado promedio del proyecto de alta de cada cliente recurrente
+// nuevo del período (mismo criterio que CLIENTE_RECURRENTE_FILTER).
 export async function getASP(startDate, endDate) {
     const rows = await db().ejecutarQuery(`
         SELECT p.nombre_cliente, ${MRR_CASE} AS mrr_alta
@@ -123,14 +131,13 @@ export async function getASP(startDate, endDate) {
         INNER JOIN (
             SELECT nombre_cliente, MIN(fecha_creacion) AS primera_fecha
             FROM proyectos
-            WHERE ${NOT_DELETED}
+            WHERE ${CLIENTE_RECURRENTE_FILTER}
             GROUP BY nombre_cliente
             HAVING primera_fecha BETWEEN ? AND ?
         ) nuevos
             ON nuevos.nombre_cliente = p.nombre_cliente
            AND nuevos.primera_fecha = p.fecha_creacion
-        WHERE p.ciclo_facturacion != 'Unico'
-          AND (p.observaciones IS NULL OR p.observaciones NOT LIKE '[ELIMINADO]#%')
+        WHERE ${CLIENTE_RECURRENTE_FILTER}
     `, [startDate, endDate]);
 
     const clientesConsiderados = rows.length;
@@ -160,7 +167,7 @@ export async function getTendenciaMensual(meses = 12) {
         SELECT periodo, COUNT(*) AS total FROM (
             SELECT nombre_cliente, DATE_FORMAT(MIN(fecha_creacion), '%Y-%m') AS periodo
             FROM proyectos
-            WHERE ${NOT_DELETED}
+            WHERE ${CLIENTE_RECURRENTE_FILTER}
             GROUP BY nombre_cliente
         ) altas
         WHERE periodo >= DATE_FORMAT(DATE_SUB(CURDATE(), INTERVAL ? MONTH), '%Y-%m')
