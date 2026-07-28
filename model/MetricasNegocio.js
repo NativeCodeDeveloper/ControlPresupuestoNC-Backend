@@ -1,9 +1,11 @@
 import DataBase from '../config/Database.js';
+import { fixedCostOccursInPeriod } from '../services/financeService.js';
 
 const db = () => DataBase.getInstance();
 
 const ESTADO_CANCELADO = 6;
 const ESTADO_DESACTIVADA = 9;
+const CATEGORIAS_MARKETING = [4, 7]; // Marketing, Publicidad — mismo catálogo que costos_variables
 
 const NOT_DELETED = `(observaciones IS NULL OR observaciones NOT LIKE '[ELIMINADO]#%')`;
 
@@ -55,7 +57,34 @@ export async function getChurnSnapshot() {
     return { cancelados, total, churnRate };
 }
 
-// CAC — aproximación macro: gasto Marketing(4) + Publicidad(7) del período
+// Gasto en costos FIJOS categorizados como Marketing/Publicidad (ej. Meta Ads, Google
+// Ads) que vencen dentro del período — mismo criterio de caja que usa financeService
+// para "C. Fijos Efectivos". Si la columna de categoría no existe aún (migración no
+// aplicada), se degrada a 0 en vez de romper el resto de las métricas.
+async function getGastoMarketingFijo(startDate, endDate) {
+    try {
+        const costosFijos = await db().ejecutarQuery(`
+            SELECT cf.monto, cf.frecuencia, cf.fecha_pago, cf.fecha_inicio, cf.fecha_fin
+            FROM costos_fijos cf
+            INNER JOIN servicios s ON s.id_servicio = cf.id_servicio
+            WHERE cf.activo = 1
+              AND s.tipo_costo_variable_id IN (${CATEGORIAS_MARKETING.join(',')})
+        `, []);
+
+        const periodYear = Number(startDate.slice(0, 4));
+        const periodMonthIndex = Number(startDate.slice(5, 7)) - 1;
+
+        return costosFijos
+            .filter((cost) => fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex))
+            .reduce((sum, cost) => sum + Number(cost.monto || 0), 0);
+    } catch (e) {
+        console.error('[MetricasNegocio.getGastoMarketingFijo]', e.message);
+        return 0;
+    }
+}
+
+// CAC — aproximación macro: gasto Marketing(4) + Publicidad(7) del período, ya sea
+// cargado como costo variable puntual o como costo fijo recurrente (ej. Meta Ads),
 // dividido por clientes nuevos del período (primer proyecto histórico del cliente).
 export async function getCAC(startDate, endDate) {
     const [gastoRow] = await db().ejecutarQuery(`
@@ -77,7 +106,8 @@ export async function getCAC(startDate, endDate) {
         ) nuevos
     `, [startDate, endDate]);
 
-    const gastoMarketing = Number(gastoRow?.gasto || 0);
+    const gastoMarketingFijo = await getGastoMarketingFijo(startDate, endDate);
+    const gastoMarketing = Number(gastoRow?.gasto || 0) + gastoMarketingFijo;
     const clientesNuevos = Number(clientesRow?.clientes_nuevos || 0);
     const cac = clientesNuevos > 0 ? gastoMarketing / clientesNuevos : null;
 

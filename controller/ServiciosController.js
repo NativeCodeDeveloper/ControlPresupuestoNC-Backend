@@ -62,7 +62,7 @@ export default class ServiciosController {
      */
     static async crearServicio(req, res) {
         try {
-            const { nombre, name, descripcion } = req.body;
+            const { nombre, name, descripcion, tipo_costo_variable_id } = req.body;
             // Acepta 'nombre' o 'name' para compatibilidad con el frontend
             const nombreFinal = nombre || name;
 
@@ -71,7 +71,7 @@ export default class ServiciosController {
             }
 
             const servicio = new Servicios();
-            const resultado = await servicio.insertServicio(nombreFinal, descripcion);
+            const resultado = await servicio.insertServicio(nombreFinal, descripcion, tipo_costo_variable_id ?? null);
             return res.status(201).json({ ok: true, id: resultado.insertId, resultado });
         } catch (error) {
             console.error("[ServiciosController.crearServicio]", error);
@@ -88,14 +88,14 @@ export default class ServiciosController {
     static async actualizarServicio(req, res) {
         try {
             const { id } = req.params;
-            const { nombre, descripcion } = req.body;
+            const { nombre, descripcion, tipo_costo_variable_id } = req.body;
 
             if (!id || !nombre) {
                 return res.status(404).json({ message: "Faltan datos requeridos" });
             }
 
             const servicio = new Servicios();
-            const resultado = await servicio.updateServicio(id, nombre, descripcion);
+            const resultado = await servicio.updateServicio(id, nombre, descripcion, tipo_costo_variable_id);
             return res.json({ ok: true, resultado });
         } catch (error) {
             console.error("[ServiciosController.actualizarServicio]", error);

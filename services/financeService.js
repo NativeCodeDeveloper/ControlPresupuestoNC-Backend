@@ -149,7 +149,7 @@ function getMonthlyAccrualAmount(cost) {
     return Number.isFinite(monto) ? monto / step : 0;
 }
 
-function fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex) {
+export function fixedCostOccursInPeriod(cost, periodYear, periodMonthIndex) {
     const periodStart = new Date(periodYear, periodMonthIndex, 1);
     const periodEnd = new Date(periodYear, periodMonthIndex + 1, 0);
     const start = normalizeDate(cost?.fecha_inicio);

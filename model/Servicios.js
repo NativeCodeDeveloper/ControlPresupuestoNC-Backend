@@ -48,10 +48,17 @@ export default class Servicios {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasServiciosColumn(conexion, "activo");
+            const hasCategoria = await hasServiciosColumn(conexion, "tipo_costo_variable_id");
             const idColumn = await getServiciosIdColumn(conexion);
+            const selectCols = hasCategoria
+                ? `s.*, s.${idColumn} AS id, tcv.nombre AS categoria_nombre`
+                : `s.*, s.${idColumn} AS id`;
+            const joinClause = hasCategoria
+                ? "LEFT JOIN tipos_costos_variables tcv ON tcv.id_tipo_costo_variable = s.tipo_costo_variable_id"
+                : "";
             let query = hasActivo
-                ? `SELECT *, ${idColumn} AS id FROM servicios WHERE activo = 1 ORDER BY nombre`
-                : `SELECT *, ${idColumn} AS id FROM servicios WHERE descripcion IS NULL OR descripcion NOT LIKE ? ORDER BY nombre`;
+                ? `SELECT ${selectCols} FROM servicios s ${joinClause} WHERE s.activo = 1 ORDER BY s.nombre`
+                : `SELECT ${selectCols} FROM servicios s ${joinClause} WHERE s.descripcion IS NULL OR s.descripcion NOT LIKE ? ORDER BY s.nombre`;
             const params = hasActivo ? [] : [`${SOFT_DELETE_PREFIX}%`];
             if (pagination) {
                 query += " LIMIT ? OFFSET ?";
@@ -84,14 +91,15 @@ export default class Servicios {
     }
 
     // CREAR NUEVO SERVICIO
-    async insertServicio(nombre, descripcion) {
+    async insertServicio(nombre, descripcion, tipoCostoVariableId = null) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasServiciosColumn(conexion, "activo");
-            const query = hasActivo
-                ? "INSERT INTO servicios (nombre, descripcion, activo) VALUES (?, ?, 1)"
-                : "INSERT INTO servicios (nombre, descripcion) VALUES (?, ?)";
-            const params = [nombre, descripcion];
+            const hasCategoria = await hasServiciosColumn(conexion, "tipo_costo_variable_id");
+            const cols = ["nombre", "descripcion", ...(hasActivo ? ["activo"] : []), ...(hasCategoria ? ["tipo_costo_variable_id"] : [])];
+            const placeholders = ["?", "?", ...(hasActivo ? ["1"] : []), ...(hasCategoria ? ["?"] : [])];
+            const params = [nombre, descripcion, ...(hasCategoria ? [tipoCostoVariableId] : [])];
+            const query = `INSERT INTO servicios (${cols.join(", ")}) VALUES (${placeholders.join(", ")})`;
 
             const resultado = await conexion.ejecutarQuery(query, params);
             return resultado;
@@ -101,17 +109,21 @@ export default class Servicios {
     }
 
     // ACTUALIZAR SERVICIO
-    async updateServicio(id, nombre, descripcion) {
+    async updateServicio(id, nombre, descripcion, tipoCostoVariableId = undefined) {
         const conexion = DataBase.getInstance();
         try {
             const hasActivo = await hasServiciosColumn(conexion, "activo");
+            const hasCategoria = await hasServiciosColumn(conexion, "tipo_costo_variable_id") && tipoCostoVariableId !== undefined;
             const idColumn = await getServiciosIdColumn(conexion);
-            const query = hasActivo
-                ? `UPDATE servicios SET nombre = ?, descripcion = ? WHERE ${idColumn} = ? AND activo = 1`
-                : `UPDATE servicios SET nombre = ?, descripcion = ? WHERE ${idColumn} = ? AND (descripcion IS NULL OR descripcion NOT LIKE ?)`;
-            const params = hasActivo
-                ? [nombre, descripcion, id]
-                : [nombre, descripcion, id, `${SOFT_DELETE_PREFIX}%`];
+            const setClause = ["nombre = ?", "descripcion = ?", ...(hasCategoria ? ["tipo_costo_variable_id = ?"] : [])];
+            const whereClause = hasActivo
+                ? `${idColumn} = ? AND activo = 1`
+                : `${idColumn} = ? AND (descripcion IS NULL OR descripcion NOT LIKE ?)`;
+            const query = `UPDATE servicios SET ${setClause.join(", ")} WHERE ${whereClause}`;
+            const params = [
+                nombre, descripcion, ...(hasCategoria ? [tipoCostoVariableId] : []),
+                id, ...(hasActivo ? [] : [`${SOFT_DELETE_PREFIX}%`]),
+            ];
 
             const resultado = await conexion.ejecutarQuery(query, params);
             return resultado;
