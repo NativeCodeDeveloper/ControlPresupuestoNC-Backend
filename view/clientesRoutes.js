@@ -1,11 +1,13 @@
 import { Router } from 'express';
 import ClienteController from '../controller/ClienteController.js';
 import BovedaController  from '../controller/BovedaController.js';
+import MetricasController from '../controller/MetricasController.js';
 
 const router = Router();
 
 // ── CRM ───────────────────────────────────────────────────────────────────────
 router.get('/',                          ClienteController.listar);
+router.get('/metricas',                  MetricasController.resumen);
 router.get('/:nombre/proyectos',         ClienteController.proyectos);
 
 // ── Bóveda — entradas ─────────────────────────────────────────────────────────
