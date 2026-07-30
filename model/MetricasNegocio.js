@@ -65,6 +65,53 @@ export async function getChurnSnapshot() {
     return { cancelados, total, churnRate };
 }
 
+// Churn Rate por período — usa fecha_cancelacion, que solo se registra al pasar a
+// Cancelado (no a Desactivada; ver migración 2026-07-30_proyectos_fecha_cancelacion.sql
+// y control-back/model/Proyectos.js updateEstadoProyecto/updateProyecto).
+// Si la columna todavía no existe en el servidor (migración no aplicada), se
+// degrada a null en vez de romper el resto de las métricas — mismo patrón que
+// getGastoMarketingFijo.
+//
+// cancelados = proyectos actualmente Cancelado cuya fecha_cancelacion cae dentro
+// del período.
+// base = proyectos que estaban "activos" al iniciar el período: cualquiera que
+// hoy no esté Cancelado/Desactivada, MÁS los que sí están Cancelado pero cuya
+// fecha_cancelacion es >= startDate (es decir, se cancelaron durante o después
+// de este período, por lo que estaban vivos al comenzar). Cancelados sin fecha
+// registrada (anteriores a la migración) o cancelados antes del período quedan
+// fuera de la base — no se puede saber con certeza si estaban activos.
+export async function getChurnPeriodo(startDate, endDate) {
+    try {
+        const [row] = await db().ejecutarQuery(`
+            SELECT
+                SUM(CASE
+                    WHEN id_estado_proyecto = ${ESTADO_CANCELADO}
+                     AND fecha_cancelacion BETWEEN ? AND ?
+                    THEN 1 ELSE 0
+                END) AS cancelados,
+                SUM(CASE
+                    WHEN id_estado_proyecto = ${ESTADO_DESACTIVADA} THEN 0
+                    WHEN id_estado_proyecto != ${ESTADO_CANCELADO} THEN 1
+                    WHEN fecha_cancelacion IS NOT NULL AND fecha_cancelacion >= ? THEN 1
+                    ELSE 0
+                END) AS base
+            FROM proyectos
+            WHERE ciclo_facturacion != 'Unico'
+              AND activo = 1
+              AND ${NOT_DELETED}
+        `, [startDate, endDate, startDate]);
+
+        const cancelados = Number(row?.cancelados || 0);
+        const base = Number(row?.base || 0);
+        const churnRate = base > 0 ? cancelados / base : null;
+
+        return { cancelados, base, churnRate };
+    } catch (e) {
+        console.error('[MetricasNegocio.getChurnPeriodo]', e.message);
+        return { cancelados: 0, base: 0, churnRate: null };
+    }
+}
+
 // Gasto en costos FIJOS categorizados como Marketing/Publicidad (ej. Meta Ads, Google
 // Ads) que vencen dentro del período — mismo criterio de caja que usa financeService
 // para "C. Fijos Efectivos". Si la columna de categoría no existe aún (migración no

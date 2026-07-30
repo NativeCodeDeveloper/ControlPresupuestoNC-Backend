@@ -18,9 +18,10 @@ export default class MetricasController {
         try {
             const { mes, anio, startDate, endDate } = getPeriodo(req);
 
-            const [mrrArpa, churn, cac, asp, tendencia] = await Promise.all([
+            const [mrrArpa, churn, churnPeriodo, cac, asp, tendencia] = await Promise.all([
                 Metricas.getMRRyARPA(),
                 Metricas.getChurnSnapshot(),
+                Metricas.getChurnPeriodo(startDate, endDate),
                 Metricas.getCAC(startDate, endDate),
                 Metricas.getASP(startDate, endDate),
                 Metricas.getTendenciaMensual(12),
@@ -36,6 +37,9 @@ export default class MetricasController {
                 churnRate: churn.churnRate,
                 churnCancelados: churn.cancelados,
                 churnTotal: churn.total,
+                churnRatePeriodo: churnPeriodo.churnRate,
+                churnCanceladosPeriodo: churnPeriodo.cancelados,
+                churnBasePeriodo: churnPeriodo.base,
                 ltv,
                 cac: cac.cac,
                 cacGastoMarketing: cac.gastoMarketing,

@@ -1,6 +1,7 @@
 import DataBase from "../config/Database.js";
 
 const SOFT_DELETE_PREFIX = "[ELIMINADO]#";
+const ESTADO_CANCELADO = 6;
 let proyectosColumnsCache = null;
 let proyectosColumnsCachePromise = null;
 
@@ -253,6 +254,7 @@ export default class Proyectos {
             const hasAfectoIva = await hasProyectosColumn(conexion, "afecto_iva");
             const hasDireccionCliente = await hasProyectosColumn(conexion, "direccion_cliente");
             const hasComunaCliente = await hasProyectosColumn(conexion, "comuna_cliente");
+            const hasFechaCancelacion = await hasProyectosColumn(conexion, "fecha_cancelacion");
             const idColumn = await getProyectoIdColumn(conexion);
             const tipoColumn = await getProyectoTipoColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
@@ -302,6 +304,11 @@ export default class Proyectos {
                 param.push(comuna_cliente ?? null);
             }
 
+            if (hasFechaCancelacion) {
+                setParts.push("fecha_cancelacion = CASE WHEN ? = ? THEN COALESCE(fecha_cancelacion, NOW()) ELSE NULL END");
+                param.push(estado_proyecto_id ?? null, ESTADO_CANCELADO);
+            }
+
             param.push(id);
             const where = [`${idColumn} = ?`];
 
@@ -326,10 +333,19 @@ export default class Proyectos {
         try {
             const hasActivo = await hasProyectosColumn(conexion, "activo");
             const hasObservaciones = await hasProyectosColumn(conexion, "observaciones");
+            const hasFechaCancelacion = await hasProyectosColumn(conexion, "fecha_cancelacion");
             const idColumn = await getProyectoIdColumn(conexion);
             const estadoColumn = await getProyectoEstadoColumn(conexion);
+            const setParts = [`${estadoColumn} = ?`];
+            const param = [estado_proyecto_id];
+
+            if (hasFechaCancelacion) {
+                setParts.push("fecha_cancelacion = CASE WHEN ? = ? THEN COALESCE(fecha_cancelacion, NOW()) ELSE NULL END");
+                param.push(estado_proyecto_id, ESTADO_CANCELADO);
+            }
+
             const where = [`${idColumn} = ?`];
-            const param = [estado_proyecto_id, id];
+            param.push(id);
 
             if (hasActivo) {
                 where.push("activo = 1");
@@ -338,7 +354,7 @@ export default class Proyectos {
                 param.push(`${SOFT_DELETE_PREFIX}%`);
             }
 
-            const query = `UPDATE proyectos SET ${estadoColumn} = ? WHERE ${where.join(" AND ")}`;
+            const query = `UPDATE proyectos SET ${setParts.join(", ")} WHERE ${where.join(" AND ")}`;
 
             const resultado = await conexion.ejecutarQuery(query, param);
             return resultado;
