@@ -23,6 +23,7 @@
  *   - getFinancialSummary(query)        → resumen financiero completo de un período
  *   - getPartnerAvailableAmount(id, q)  → disponible de un socio para retirar
  *   - getUpcomingDueItems(query)        → costos con vencimiento próximo
+ *   - getProyeccionCobros(query)        → cobros proyectados de proyectos recurrentes
  *   - getFlujoCajaAnual(query)          → flujo de caja mes a mes de un año
  */
 import DataBase from "../config/Database.js";
@@ -1513,6 +1514,91 @@ export async function getUpcomingDueItems(query = {}) {
         dias: windowDays,
         total: allItems.length,
         items: allItems
+    };
+}
+
+// Estados de proyecto que no cuentan como cobro proyectado — mismos ids que
+// MetricasNegocio.js (Cancelado=6, Desactivada=9).
+const ESTADO_PROYECTO_CANCELADO = 6;
+const ESTADO_PROYECTO_DESACTIVADA = 9;
+
+/**
+ * getProyeccionCobros - Proyecta los cobros esperados de proyectos recurrentes dentro
+ * de una ventana de días, usando fecha_proximo_pago + monto_acordado. Pensado para que
+ * los socios estimen cuándo habrá caja suficiente para hacer un reparto — es informativo
+ * y prospectivo, independiente del cálculo de utilidad/reparto de getFinancialSummary
+ * (que es retrospectivo, sobre pagos ya recibidos).
+ *
+ * fecha_proximo_pago solo avanza (en insertProyectoPago, Proyectos.js) una vez que el
+ * ciclo actual queda cubierto por completo, así que por construcción, si un proyecto
+ * muestra una fecha futura, ese ciclo todavía no está pagado — el monto proyectado es
+ * monto_acordado completo. (Se probó una versión que intentaba descontar abonos
+ * parciales con una subquery de ventana de fechas, pero un pago atrasado que cierra el
+ * ciclo ANTERIOR puede caer dentro de la ventana de fechas del ciclo nuevo y contarse
+ * dos veces — se descartó por ese riesgo de falsos "ya pagado".)
+ *
+ * Ruta: GET /api/finanzas/proyeccion-cobros
+ * Query: dias (default 30, máx 180) — ventana de días a proyectar hacia adelante.
+ */
+export async function getProyeccionCobros(query = {}) {
+    const conexion = DataBase.getInstance();
+    const dias = Number(query.dias || query.days || 30);
+    const windowDays = Number.isFinite(dias) ? Math.max(1, Math.min(180, dias)) : 30;
+
+    const today = normalizeDate(new Date());
+    const limitDate = addDays(today, windowDays);
+    const limitDateStr = toSqlDate(limitDate);
+
+    // Sin cota inferior a propósito: los proyectos ya vencidos (fecha_proximo_pago en
+    // el pasado) son justamente los que con más urgencia deberían cobrarse pronto, así
+    // que cuentan en la proyección — aparecen primero (ORDER BY ASC) marcados en rojo
+    // vía estadoAlerta más abajo.
+    const rows = await safeQuery(
+        conexion,
+        `SELECT
+            p.id_proyecto AS id,
+            p.nombre,
+            p.nombre_cliente,
+            p.fecha_proximo_pago,
+            p.ciclo_facturacion,
+            p.monto_acordado
+        FROM proyectos p
+        WHERE p.activo = 1
+          AND p.ciclo_facturacion != 'Unico'
+          AND p.id_estado_proyecto NOT IN (${ESTADO_PROYECTO_CANCELADO}, ${ESTADO_PROYECTO_DESACTIVADA})
+          AND (p.observaciones IS NULL OR p.observaciones NOT LIKE '${SOFT_DELETE_PREFIX}%')
+          AND p.fecha_proximo_pago <= ?
+        ORDER BY p.fecha_proximo_pago ASC, p.nombre_cliente ASC`,
+        [limitDateStr],
+        []
+    );
+
+    let acumulado = 0;
+    const proyectos = (Array.isArray(rows) ? rows : []).map((r) => {
+        const montoProyectado = Number(r.monto_acordado || 0);
+        acumulado += montoProyectado;
+        const diasParaVencer = diffDays(today, r.fecha_proximo_pago);
+        const estadoAlerta = diasParaVencer < 0 ? "rojo" : diasParaVencer <= 7 ? "naranja" : "verde";
+
+        return {
+            id: r.id,
+            nombre: r.nombre,
+            nombreCliente: r.nombre_cliente,
+            fechaProximoPago: toSqlDate(r.fecha_proximo_pago),
+            cicloFacturacion: r.ciclo_facturacion,
+            montoProyectado,
+            diasParaVencer,
+            estadoAlerta,
+            acumulado
+        };
+    });
+
+    return {
+        desde: toSqlDate(today),
+        hasta: limitDateStr,
+        dias: windowDays,
+        totalProyectado: acumulado,
+        proyectos
     };
 }
 

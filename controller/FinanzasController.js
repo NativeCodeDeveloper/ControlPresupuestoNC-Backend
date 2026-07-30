@@ -1,6 +1,7 @@
 import {
     getFinancialSummary,
     getUpcomingDueItems,
+    getProyeccionCobros,
     getFlujoCajaAnual,
     calcularF29
 } from "../services/financeService.js";
@@ -50,6 +51,22 @@ export default class FinanzasController {
         } catch (error) {
             console.error("[FinanzasController.obtenerVencimientos]", error);
             return res.status(500).json({ message: "Error al obtener vencimientos" });
+        }
+    }
+
+    /**
+     * obtenerProyeccionCobros - Proyecta los cobros esperados de proyectos recurrentes
+     * dentro de una ventana de días, para estimar cuándo habrá caja para repartir a socios.
+     * Ruta: GET /api/finanzas/proyeccion-cobros
+     * Query: dias (default 30, máx 180) — ventana de días a proyectar.
+     */
+    static async obtenerProyeccionCobros(req, res) {
+        try {
+            const data = await getProyeccionCobros(req.query || {});
+            return res.json(data);
+        } catch (error) {
+            console.error("[FinanzasController.obtenerProyeccionCobros]", error);
+            return res.status(500).json({ message: "Error al obtener proyección de cobros" });
         }
     }
 

@@ -5,6 +5,7 @@ import FinanzasController from "../controller/FinanzasController.js";
 
 router.get("/resumen", FinanzasController.obtenerResumen);
 router.get("/vencimientos", FinanzasController.obtenerVencimientos);
+router.get("/proyeccion-cobros", FinanzasController.obtenerProyeccionCobros);
 router.get("/flujo-caja", FinanzasController.obtenerFlujoCaja);
 router.get("/f29", FinanzasController.obtenerF29);
 router.get("/f29/historial", FinanzasController.obtenerHistorialF29);
