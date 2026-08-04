@@ -479,22 +479,23 @@ export async function getServidores() {
     );
 }
 
-export async function createServidor({ ruta_backend, estado, id_proyecto, version, notas }) {
+export async function createServidor({ ruta_backend, estado, id_proyecto, version, notas, api_key_encrypted }) {
     const result = await db().ejecutarQuery(
-        `INSERT INTO synapse_servidores (ruta_backend, estado, id_proyecto, version, notas)
-         VALUES (?, ?, ?, ?, ?)`,
+        `INSERT INTO synapse_servidores (ruta_backend, estado, id_proyecto, version, notas, api_key_encrypted)
+         VALUES (?, ?, ?, ?, ?, ?)`,
         [
             ruta_backend,
             estado || 'url_disponible',
             id_proyecto || null,
             version || null,
             notas || null,
+            api_key_encrypted || null,
         ]
     );
     return { id_servidor: result.insertId };
 }
 
-export async function updateServidor(id, { ruta_backend, estado, id_proyecto, version, notas }) {
+export async function updateServidor(id, { ruta_backend, estado, id_proyecto, version, notas, api_key_encrypted }) {
     const fields = [];
     const vals   = [];
     if (ruta_backend !== undefined) { fields.push('ruta_backend = ?'); vals.push(ruta_backend); }
@@ -502,6 +503,7 @@ export async function updateServidor(id, { ruta_backend, estado, id_proyecto, ve
     if (id_proyecto  !== undefined) { fields.push('id_proyecto = ?');  vals.push(id_proyecto || null); }
     if (version      !== undefined) { fields.push('version = ?');      vals.push(version || null); }
     if (notas        !== undefined) { fields.push('notas = ?');        vals.push(notas || null); }
+    if (api_key_encrypted !== undefined) { fields.push('api_key_encrypted = ?'); vals.push(api_key_encrypted || null); }
     if (!fields.length) return;
     vals.push(id);
     await db().ejecutarQuery(

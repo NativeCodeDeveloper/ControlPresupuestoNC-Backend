@@ -26,6 +26,7 @@ import catalogosRoutes from "./view/catalogosRoutes.js";
 import retirosSociosRoutes from "./view/retirosSociosRoutes.js";
 import finanzasRoutes from "./view/finanzasRoutes.js";
 import inversionesRoutes from "./view/inversionesRoutes.js";
+import healthScoreRoutes from "./view/healthScoreRoutes.js";
 import CatalogosController from "./controller/CatalogosController.js";
 import rateLimit from "express-rate-limit";
 
@@ -171,6 +172,7 @@ app.use("/api/qa",      requireAuth, qaRoutes);
 app.use("/api/workspace", requireAuth, workspaceRoutes);
 app.use("/api/adjuntos", requireAuth, adjuntosRoutes);
 app.use("/api/admin",      requireAuth, adminRoutes);
+app.use("/api/health-score", requireAuth, healthScoreRoutes);
 app.use("/api/calendario", requireAuth, calendarioRoutes);
 app.use("/api/dte", requireAuth, dteRoutes);
 // Rutas alternativas para tipos de costos variables (frontend costsService usa /api/tipos-costos)

@@ -5,6 +5,7 @@ import { buildEmailHtml } from '../services/emailHtmlBuilder.js';
 import { emitUpdate } from '../config/socket.js';
 import { sendPushToAll } from '../services/pushService.js';
 import DataBase from '../config/Database.js';
+import { encryptApiKey } from '../utils/encryption.js';
 
 const db = () => DataBase.getInstance();
 
@@ -322,16 +323,45 @@ export default class SynapseController {
 
     static async createServidor(req, res) {
         try {
-            const { ruta_backend, estado, id_proyecto, version, notas } = req.body;
+            const { ruta_backend, estado, id_proyecto, version, notas, api_key } = req.body;
             if (!ruta_backend) return res.status(400).json({ error: 'ruta_backend es requerido.' });
-            const result = await Synapse.createServidor({ ruta_backend, estado, id_proyecto, version, notas });
+
+            // Cifrar API key antes de guardar
+            let api_key_encrypted = null;
+            if (api_key && api_key.trim()) {
+                api_key_encrypted = encryptApiKey(api_key.trim());
+            }
+
+            const result = await Synapse.createServidor({
+                ruta_backend,
+                estado,
+                id_proyecto,
+                version,
+                notas,
+                api_key_encrypted
+            });
             res.status(201).json(result);
         } catch (e) { err(res, e); }
     }
 
     static async updateServidor(req, res) {
         try {
-            await Synapse.updateServidor(req.params.id, req.body);
+            const { ruta_backend, estado, id_proyecto, version, notas, api_key } = req.body;
+
+            // Preparar datos para actualizar
+            const updateData = { ruta_backend, estado, id_proyecto, version, notas };
+
+            // Si se envía una API key, cifrarla
+            if (api_key !== undefined) {
+                if (api_key && api_key.trim()) {
+                    updateData.api_key_encrypted = encryptApiKey(api_key.trim());
+                } else {
+                    // Si envían string vacío, eliminar la API key
+                    updateData.api_key_encrypted = null;
+                }
+            }
+
+            await Synapse.updateServidor(req.params.id, updateData);
             res.json({ ok: true });
         } catch (e) { err(res, e); }
     }
