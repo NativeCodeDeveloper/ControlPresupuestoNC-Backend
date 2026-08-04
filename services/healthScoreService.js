@@ -295,14 +295,38 @@ function _normalizeDtesAlDia(alDia) {
   return alDia ? 100 : 0;
 }
 
-// Métricas de USO en 0 — Agenda Clínica todavía no está conectada. Se
-// muestran igual (con sus pesos reales) para que la UI ya tenga la
+// Métricas de USO en placeholder — Agenda Clínica todavía no está conectada.
+// Se muestran igual (con sus pesos reales) para que la UI ya tenga la
 // estructura lista; cuando _fetchAgendaClinicaMetrics se active, este bloque
 // se reemplaza por los valores reales y empiezan a sumar solas al score.
-const USO_WEIGHTS = { reservas: 35, confirmaciones: 20, fichasClinicas: 20, ultimoIngreso: 15, frecuenciaIngreso: 10 };
+//
+// Rediseñado a propósito para detectar churn TEMPRANO, no un mes tarde:
+// un acumulado de "reservas últimos 30 días" como señal principal es lento
+// — un cliente puede dejar de usar la plataforma y recién se ve "mal" en el
+// health score casi un mes después, cuando probablemente ya decidió irse.
+// diasSinActividad (recencia) y tendenciaSemanal (¿la actividad está
+// cayendo AHORA?) pasan a ser las señales dominantes (60% combinado); los
+// acumulados mensuales quedan como contexto de volumen, no como alerta.
+const USO_WEIGHTS = {
+  diasSinActividad: 35,
+  tendenciaSemanal: 25,
+  reservas: 15,
+  confirmaciones: 15,
+  fichasClinicas: 10,
+};
 
 function _buildUsoPlaceholderMetrics() {
   return {
+    diasSinActividad: {
+      id: 'diasSinActividad', label: 'Días sin actividad', category: 'uso',
+      value: null, weight: USO_WEIGHTS.diasSinActividad,
+      maxPossible: 60, normalizedValue: 0, contribution: 0, unit: 'días sin reservar/ingresar',
+    },
+    tendenciaSemanal: {
+      id: 'tendenciaSemanal', label: 'Tendencia semanal', category: 'uso',
+      value: null, weight: USO_WEIGHTS.tendenciaSemanal,
+      maxPossible: 0, normalizedValue: 0, contribution: 0, unit: '% vs semana anterior',
+    },
     reservas: {
       id: 'reservas', label: 'Reservas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.reservas,
@@ -317,16 +341,6 @@ function _buildUsoPlaceholderMetrics() {
       id: 'fichasClinicas', label: 'Fichas clínicas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.fichasClinicas,
       maxPossible: 120, normalizedValue: 0, contribution: 0, unit: 'creadas',
-    },
-    ultimoIngreso: {
-      id: 'ultimoIngreso', label: 'Último ingreso', category: 'uso',
-      value: null, weight: USO_WEIGHTS.ultimoIngreso,
-      maxPossible: 90, normalizedValue: 0, contribution: 0, unit: 'días atrás',
-    },
-    frecuenciaIngreso: {
-      id: 'frecuenciaIngreso', label: 'Frecuencia de ingreso', category: 'uso',
-      value: null, weight: USO_WEIGHTS.frecuenciaIngreso,
-      maxPossible: 30, normalizedValue: 0, contribution: 0, unit: 'días entre ingresos',
     },
   };
 }
@@ -398,20 +412,19 @@ function _buildFinanceScore(finance, valorCeiling) {
 /**
  * Trae métricas de USO desde el backend independiente de Agenda Clínica del
  * cliente (config.ruta_backend + config.api_key, ya cifrado/gestionado por
- * getClientConfig). NO ACTIVAR hasta que Agenda Clínica exponga estos
- * endpoints (ver README del módulo en control-Front) — hoy no existen y
- * fallarían todas las llamadas.
+ * getClientConfig). NO ACTIVAR hasta que Agenda Clínica exponga este
+ * endpoint — hoy no existe y fallarían todas las llamadas. Ver especificación
+ * completa en docs/agenda-clinica-health-metrics.md (contrato para Nico).
  *
- * Uso previsto una vez esté listo (en getScore/getAllScores):
- *   const config = await getClientConfig(nombreCliente);
- *   if (config?.ruta_backend && config?.api_key) {
- *     const uso = await _fetchAgendaClinicaMetrics(config);
- *     // fusionar `uso` con `finance` y pasar ambos a un cálculo de score
- *     // completo (USO+VALOR+PAGA) con los pesos originales sin reescalar.
- *   }
+ * NO llamar esto en vivo en cada getScore/getAllScores — 32+ clientes
+ * significan 32+ llamadas HTTP a servidores externos distintos en cada
+ * carga de página; si uno está lento o caído, se atrasa/rompe toda la
+ * página. Debe ir en un cron propio (mismo patrón que
+ * capturePortfolioSnapshot) que guarde el resultado en una tabla de caché
+ * acá en Finance, y getScore/getAllScores lee de esa caché, nunca en vivo.
  */
 // async function _fetchAgendaClinicaMetrics(config) {
-//   const res = await fetch(`${config.ruta_backend}/api/v1/companies/health`, {
+//   const res = await fetch(`${config.ruta_backend}/health-metrics`, {
 //     headers: {
 //       Authorization: `Bearer ${config.api_key}`,
 //       Accept: 'application/json',
@@ -419,8 +432,8 @@ function _buildFinanceScore(finance, valorCeiling) {
 //   });
 //   if (!res.ok) throw new Error(`Agenda Clínica respondió ${res.status}`);
 //   const data = await res.json();
-//   // Forma esperada (ver control-Front/.../mocks/agendaClinicaMockData.js):
-//   // { reservas, confirmaciones, fichasClinicas, ultimoIngreso, frecuenciaIngreso }
+//   // Forma esperada (ver docs/agenda-clinica-health-metrics.md):
+//   // { diasSinActividad, tendenciaSemanal, reservas, confirmaciones, fichasClinicas }
 //   return data;
 // }
 
