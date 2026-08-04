@@ -29,30 +29,6 @@ const CLIENTE_ACTIVO_FILTER = `
 `;
 
 /**
- * Obtiene todos los clientes activos con sus proyectos
- */
-async function getActiveClients() {
-  try {
-    const rows = await db().ejecutarQuery(`
-      SELECT
-        nombre_cliente,
-        COUNT(*) AS total_proyectos,
-        SUM(monto_acordado) AS monto_total,
-        MAX(fecha_creacion) AS ultimo_proyecto
-      FROM proyectos
-      WHERE ${CLIENTE_ACTIVO_FILTER}
-      GROUP BY nombre_cliente
-      ORDER BY nombre_cliente
-    `, []);
-
-    return Array.isArray(rows) ? rows : [];
-  } catch (error) {
-    console.error('[healthScoreService.getActiveClients]', error);
-    return [];
-  }
-}
-
-/**
  * Obtiene clientes cancelados con fecha de cancelación
  */
 async function getCancelledClients() {
@@ -96,7 +72,7 @@ async function getClientConfig(nombreCliente) {
     const rows = await db().ejecutarQuery(`
       SELECT s.ruta_backend, s.api_key_encrypted
       FROM synapse_servidores s
-      INNER JOIN proyectos p ON s.id_proyecto = p.id
+      INNER JOIN proyectos p ON s.id_proyecto = p.id_proyecto
       WHERE p.nombre_cliente = ?
         AND s.ruta_backend IS NOT NULL
         AND s.ruta_backend != ''
@@ -131,20 +107,100 @@ async function getClientConfig(nombreCliente) {
 }
 
 /**
+ * Obtiene los proyectos activos (con datos de pago) de uno o todos los
+ * clientes activos en una sola query — evita N+1 al calcular métricas de
+ * varios clientes a la vez (ver getAllScores).
+ *
+ * @param {string|null} nombreCliente - si se pasa, filtra a un solo cliente
+ */
+async function _getProyectosFinancieros(nombreCliente = null) {
+  const params = [];
+  let where = CLIENTE_ACTIVO_FILTER;
+  if (nombreCliente) {
+    where += ` AND nombre_cliente = ?`;
+    params.push(nombreCliente);
+  }
+
+  const rows = await db().ejecutarQuery(`
+    SELECT id_proyecto, nombre_cliente, monto_acordado, ciclo_facturacion, fecha_proximo_pago
+    FROM proyectos
+    WHERE ${where}
+  `, params);
+
+  return Array.isArray(rows) ? rows : [];
+}
+
+/**
+ * De un set de id_proyecto, cuáles tienen al menos un DTE rechazado sin
+ * resolver — batched, no uno por proyecto.
+ */
+async function _getProyectosConDteRechazado(idsProyecto) {
+  if (!idsProyecto.length) return new Set();
+
+  const placeholders = idsProyecto.map(() => '?').join(',');
+  const rows = await db().ejecutarQuery(`
+    SELECT DISTINCT id_proyecto
+    FROM dte_documentos
+    WHERE activo = 1 AND estado_sii = 'rechazado' AND id_proyecto IN (${placeholders})
+  `, idsProyecto);
+
+  return new Set((Array.isArray(rows) ? rows : []).map(r => r.id_proyecto));
+}
+
+/**
+ * Agrega las filas de proyectos de UN cliente en métricas financieras.
+ * estadoPagos/morosidad usan el peor caso (fecha_proximo_pago más próxima a
+ * vencer o ya vencida) entre sus proyectos con ciclo recurrente — mismo
+ * criterio que ya usa el Cockpit (Synapse.getCockpitData) para no inventar
+ * un segundo criterio de "cliente atrasado".
+ */
+function _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds) {
+  const montoFacturado = proyectosCliente.reduce((sum, p) => sum + Number(p.monto_acordado || 0), 0);
+
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+
+  let peorDiff = null;
+  for (const p of proyectosCliente) {
+    if (p.ciclo_facturacion && p.ciclo_facturacion !== 'Unico' && p.fecha_proximo_pago) {
+      const vence = new Date(p.fecha_proximo_pago);
+      vence.setHours(0, 0, 0, 0);
+      const diff = Math.floor((vence - today) / 86400000);
+      if (peorDiff === null || diff < peorDiff) peorDiff = diff;
+    }
+  }
+
+  let estadoPagos = 'verde';
+  let morosidad = 0;
+  if (peorDiff !== null) {
+    if (peorDiff < 0) {
+      estadoPagos = 'rojo';
+      morosidad = -peorDiff;
+    } else if (peorDiff <= 7) {
+      estadoPagos = 'naranja';
+    }
+  }
+
+  const dtesAlDia = !proyectosCliente.some(p => dteRechazadoIds.has(p.id_proyecto));
+
+  return { estadoPagos, morosidad, dtesAlDia, montoFacturado };
+}
+
+/**
  * Obtiene métricas financieras de un cliente
- * (estado de pagos, morosidad, DTEs, etc.)
+ * (estado de pagos, morosidad, DTEs, valor facturado)
  */
 async function getClientFinanceMetrics(nombreCliente) {
   try {
-    // TODO: Implementar lógica real de pagos/morosidad
-    // Por ahora retornamos valores mock
+    const proyectos = await _getProyectosFinancieros(nombreCliente);
+    if (!proyectos.length) {
+      return { estadoPagos: 'naranja', morosidad: 0, dtesAlDia: true, montoFacturado: 0 };
+    }
 
-    return {
-      estadoPagos: 'verde',
-      morosidad: 0,
-      dtesAlDia: true,
-      montoFacturado: 0,
-    };
+    const ids = proyectos.map(p => p.id_proyecto);
+    const dteRechazadoIds = await _getProyectosConDteRechazado(ids);
+
+    return _aggregateFinanceMetrics(proyectos, dteRechazadoIds);
   } catch (error) {
     console.error('[healthScoreService.getClientFinanceMetrics]', error);
     return {
@@ -155,6 +211,121 @@ async function getClientFinanceMetrics(nombreCliente) {
     };
   }
 }
+
+// ── Cálculo de score (VALOR + PAGA — USO pendiente de Agenda Clínica) ─────
+//
+// Mientras Agenda Clínica no esté conectada, el score/status se calcula solo
+// con lo que Finance ya sabe: valor facturado + comportamiento de pago. Esto
+// SÍ es un status real y accionable para priorizar (cliente atrasado en pago
+// o con DTE rechazado sale crítico/en riesgo de verdad), no un placeholder.
+//
+// Pesos proporcionales a los de control-Front/.../healthScoreConstants.js
+// (VALOR 20 : PAGA estadoPagos 10 : morosidad 5 : dtesAlDia 5 → misma razón
+// 4:2:1:1, reescalados a 100 porque hoy USO no aporta puntos). Cuando se
+// conecte Agenda Clínica, reemplazar este bloque por el cálculo completo
+// (USO+VALOR+PAGA) usando los pesos originales sin reescalar — ver
+// _fetchAgendaClinicaMetrics más abajo, ya dejado listo para activar.
+const FINANCE_SCORE_WEIGHTS = { valorFacturado: 50, estadoPagos: 25, morosidad: 12.5, dtesAlDia: 12.5 };
+const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
+
+function _normalizeValorFacturado(monto) {
+  const max = 5000000; // $5M = 100 (misma escala que el frontend)
+  return Math.round(Math.min(100, (Math.sqrt(monto) / Math.sqrt(max)) * 100));
+}
+
+function _normalizeEstadoPagos(estado) {
+  return { verde: 100, naranja: 50, rojo: 0 }[estado] ?? 50;
+}
+
+function _normalizeMorosidad(dias) {
+  const max = 90;
+  if (dias <= 0) return 100;
+  if (dias >= max) return 0;
+  return Math.round(100 - (dias / max) * 100);
+}
+
+function _normalizeDtesAlDia(alDia) {
+  return alDia ? 100 : 0;
+}
+
+function _buildFinanceScore(finance) {
+  const normalized = {
+    valorFacturado: _normalizeValorFacturado(finance.montoFacturado || 0),
+    estadoPagos: _normalizeEstadoPagos(finance.estadoPagos),
+    morosidad: _normalizeMorosidad(finance.morosidad || 0),
+    dtesAlDia: _normalizeDtesAlDia(finance.dtesAlDia),
+  };
+
+  let score = 0;
+  for (const [key, value] of Object.entries(normalized)) {
+    score += (value * FINANCE_SCORE_WEIGHTS[key]) / 100;
+  }
+  score = Math.round(score);
+
+  let status = 'critical';
+  if (score >= SCORE_THRESHOLDS.HEALTHY) status = 'healthy';
+  else if (score >= SCORE_THRESHOLDS.WARNING) status = 'warning';
+
+  const contribution = (key) => Math.round((normalized[key] * FINANCE_SCORE_WEIGHTS[key]) / 100);
+
+  const metrics = {
+    valorFacturado: {
+      id: 'valorFacturado', label: 'Valor facturado', category: 'valor',
+      value: finance.montoFacturado || 0, weight: FINANCE_SCORE_WEIGHTS.valorFacturado,
+      maxPossible: 5000000, normalizedValue: normalized.valorFacturado,
+      contribution: contribution('valorFacturado'), unit: '$',
+    },
+    estadoPagos: {
+      id: 'estadoPagos', label: 'Estado de pagos', category: 'paga',
+      value: finance.estadoPagos, weight: FINANCE_SCORE_WEIGHTS.estadoPagos,
+      maxPossible: 1, normalizedValue: normalized.estadoPagos,
+      contribution: contribution('estadoPagos'), unit: '',
+    },
+    morosidad: {
+      id: 'morosidad', label: 'Morosidad', category: 'paga',
+      value: finance.morosidad || 0, weight: FINANCE_SCORE_WEIGHTS.morosidad,
+      maxPossible: 90, normalizedValue: normalized.morosidad,
+      contribution: contribution('morosidad'), unit: 'días atraso',
+    },
+    dtesAlDia: {
+      id: 'dtesAlDia', label: 'DTEs al día', category: 'paga',
+      value: finance.dtesAlDia, weight: FINANCE_SCORE_WEIGHTS.dtesAlDia,
+      maxPossible: 1, normalizedValue: normalized.dtesAlDia,
+      contribution: contribution('dtesAlDia'), unit: '',
+    },
+  };
+
+  return { score, status, metrics };
+}
+
+/**
+ * Trae métricas de USO desde el backend independiente de Agenda Clínica del
+ * cliente (config.ruta_backend + config.api_key, ya cifrado/gestionado por
+ * getClientConfig). NO ACTIVAR hasta que Agenda Clínica exponga estos
+ * endpoints (ver README del módulo en control-Front) — hoy no existen y
+ * fallarían todas las llamadas.
+ *
+ * Uso previsto una vez esté listo (en getScore/getAllScores):
+ *   const config = await getClientConfig(nombreCliente);
+ *   if (config?.ruta_backend && config?.api_key) {
+ *     const uso = await _fetchAgendaClinicaMetrics(config);
+ *     // fusionar `uso` con `finance` y pasar ambos a un cálculo de score
+ *     // completo (USO+VALOR+PAGA) con los pesos originales sin reescalar.
+ *   }
+ */
+// async function _fetchAgendaClinicaMetrics(config) {
+//   const res = await fetch(`${config.ruta_backend}/api/v1/companies/health`, {
+//     headers: {
+//       Authorization: `Bearer ${config.api_key}`,
+//       Accept: 'application/json',
+//     },
+//   });
+//   if (!res.ok) throw new Error(`Agenda Clínica respondió ${res.status}`);
+//   const data = await res.json();
+//   // Forma esperada (ver control-Front/.../mocks/agendaClinicaMockData.js):
+//   // { reservas, confirmaciones, fichasClinicas, ultimoIngreso, frecuenciaIngreso }
+//   return data;
+// }
 
 /**
  * Obtiene Health Score de todos los clientes
@@ -175,20 +346,31 @@ export async function getAllScores(filter = 'activos') {
       }));
     }
 
-    // Activos
-    const clients = await getActiveClients();
+    // Activos — una sola query para todos los proyectos + una para DTEs
+    // rechazados (batched, no una consulta por cliente).
+    const proyectos = await _getProyectosFinancieros();
 
-    // TODO: Llamar a Agenda Clínica para obtener métricas de uso
-    // Por ahora retornamos estructura parcial
+    const porCliente = new Map();
+    for (const p of proyectos) {
+      if (!porCliente.has(p.nombre_cliente)) porCliente.set(p.nombre_cliente, []);
+      porCliente.get(p.nombre_cliente).push(p);
+    }
 
-    return clients.map(c => ({
-      clientId: c.nombre_cliente,
-      companyName: c.nombre_cliente,
-      score: null, // Se calculará cuando Agenda Clínica esté conectada
-      status: 'unknown',
-      metrics: {},
-      calculatedAt: new Date(),
-    }));
+    const dteRechazadoIds = await _getProyectosConDteRechazado(proyectos.map(p => p.id_proyecto));
+
+    return Array.from(porCliente.entries()).map(([nombreCliente, proyectosCliente]) => {
+      const finance = _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds);
+      const { score, status, metrics } = _buildFinanceScore(finance);
+
+      return {
+        clientId: nombreCliente,
+        companyName: nombreCliente,
+        score,
+        status,
+        metrics,
+        calculatedAt: new Date(),
+      };
+    });
   } catch (error) {
     console.error('[healthScoreService.getAllScores]', error);
     throw error;
@@ -196,25 +378,25 @@ export async function getAllScores(filter = 'activos') {
 }
 
 /**
- * Obtiene Health Score de un cliente específico.
- * Cuando Agenda Clínica esté conectada, esto obtendrá métricas reales.
+ * Obtiene Health Score de un cliente específico, basado en lo que Finance ya
+ * sabe (pagos + valor). Cuando Agenda Clínica esté conectada, sumar USO acá
+ * (ver _fetchAgendaClinicaMetrics).
  */
 export async function getScore(clientId) {
   try {
-    // Obtener configuración del cliente (URL + API key)
+    // Config de Agenda Clínica ya lista (URL + API key cifrada), sin usar
+    // todavía — queda a la espera de que Agenda Clínica exponga /health.
     const config = await getClientConfig(clientId);
 
-    // TODO: Cuando Agenda Clínica esté lista:
-    // - Usar config.ruta_backend y config.api_key para llamar a la API
-    // - Calcular score real con las métricas obtenidas
-    // - Guardar historial
+    const finance = await getClientFinanceMetrics(clientId);
+    const { score, status, metrics } = _buildFinanceScore(finance);
 
     return {
       clientId,
       companyName: clientId,
-      score: null, // Se calculará con datos reales
-      status: 'unknown',
-      metrics: {},
+      score,
+      status,
+      metrics,
       config: {
         hasBackend: !!config?.ruta_backend,
         hasApiKey: !!config?.api_key,
@@ -241,15 +423,16 @@ export async function getHistory(clientId, months = 6) {
  */
 export async function getStats() {
   try {
-    const activos = await getActiveClients();
-    const cancelados = await getCancelledClients();
+    const [scores, cancelados] = await Promise.all([
+      getAllScores('activos'),
+      getCancelledClients(),
+    ]);
 
-    // TODO: Calcular stats reales basado en scores
     return {
-      total: activos.length,
-      healthy: 0,
-      warning: 0,
-      critical: 0,
+      total: scores.length,
+      healthy: scores.filter(s => s.status === 'healthy').length,
+      warning: scores.filter(s => s.status === 'warning').length,
+      critical: scores.filter(s => s.status === 'critical').length,
       cancelled: cancelados.length,
     };
   } catch (error) {
