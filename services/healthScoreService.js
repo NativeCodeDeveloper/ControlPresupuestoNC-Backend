@@ -259,6 +259,42 @@ function _normalizeDtesAlDia(alDia) {
   return alDia ? 100 : 0;
 }
 
+// Métricas de USO en 0 — Agenda Clínica todavía no está conectada. Se
+// muestran igual (con sus pesos reales) para que la UI ya tenga la
+// estructura lista; cuando _fetchAgendaClinicaMetrics se active, este bloque
+// se reemplaza por los valores reales y empiezan a sumar solas al score.
+const USO_WEIGHTS = { reservas: 35, confirmaciones: 20, fichasClinicas: 20, ultimoIngreso: 15, frecuenciaIngreso: 10 };
+
+function _buildUsoPlaceholderMetrics() {
+  return {
+    reservas: {
+      id: 'reservas', label: 'Reservas', category: 'uso',
+      value: 0, weight: USO_WEIGHTS.reservas,
+      maxPossible: 150, normalizedValue: 0, contribution: 0, unit: 'últimos 30 días',
+    },
+    confirmaciones: {
+      id: 'confirmaciones', label: 'Confirmaciones', category: 'uso',
+      value: 0, weight: USO_WEIGHTS.confirmaciones,
+      maxPossible: 100, normalizedValue: 0, contribution: 0, unit: '%',
+    },
+    fichasClinicas: {
+      id: 'fichasClinicas', label: 'Fichas clínicas', category: 'uso',
+      value: 0, weight: USO_WEIGHTS.fichasClinicas,
+      maxPossible: 120, normalizedValue: 0, contribution: 0, unit: 'creadas',
+    },
+    ultimoIngreso: {
+      id: 'ultimoIngreso', label: 'Último ingreso', category: 'uso',
+      value: null, weight: USO_WEIGHTS.ultimoIngreso,
+      maxPossible: 90, normalizedValue: 0, contribution: 0, unit: 'días atrás',
+    },
+    frecuenciaIngreso: {
+      id: 'frecuenciaIngreso', label: 'Frecuencia de ingreso', category: 'uso',
+      value: null, weight: USO_WEIGHTS.frecuenciaIngreso,
+      maxPossible: 30, normalizedValue: 0, contribution: 0, unit: 'días entre ingresos',
+    },
+  };
+}
+
 function _buildFinanceScore(finance) {
   const normalized = {
     valorFacturado: _normalizeValorFacturado(finance.montoFacturado || 0),
@@ -309,7 +345,7 @@ function _buildFinanceScore(finance) {
     },
   };
 
-  return { score, status, metrics };
+  return { score, status, metrics: { ..._buildUsoPlaceholderMetrics(), ...metrics } };
 }
 
 /**
