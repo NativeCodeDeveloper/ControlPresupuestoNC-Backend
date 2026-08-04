@@ -255,23 +255,25 @@ async function getClientFinanceMetrics(nombreCliente) {
 // tarjeta (bloque Pagos) como informativo, solo que no cuenta. Reactivar
 // agregándolo de vuelta a SCORE_WEIGHTS cuando esté listo.
 //
-// valorFacturado tampoco entra al score — ver getValorCeiling: su techo es
-// el LTV real del negocio, pensado para leerse solo como referencia, no
-// como parte de "cliente paga o no paga" (el pedido explícito fue "status
-// real basado en pagos").
+// valorFacturado SÍ entra al score, pero con peso chico (15) a propósito:
+// se probó con su peso "de manual" (20/40 ≈ 57% de lo que hoy pesa) y un
+// cliente con pago atrasado de verdad (rojo) terminaba viéndose "Saludable"
+// solo por ser un cliente grande — el tamaño tapaba el atraso, exactamente
+// lo que "status real basado en pagos" quería evitar. Con 15% aporta sin
+// poder sacar de crítico/en riesgo a nadie que esté realmente atrasado.
 //
 // El loop de abajo normaliza por la SUMA de los pesos presentes (no asume
 // que sumen 100) — así sacar/meter una métrica del score no rompe el techo
 // de 100 puntos ni obliga a recalcular a mano el resto de los pesos.
 //
-// DISPLAY_WEIGHTS son los pesos originales de
-// control-Front/.../healthScoreConstants.js (incluye valorFacturado 20 y
-// dtesAlDia 5) — solo para mostrar en las barras de la UI, no para el
-// score. Cuando se conecte Agenda Clínica, reemplazar SCORE_WEIGHTS por el
-// cálculo completo (USO+VALOR+PAGA) con los pesos originales — ver
-// _fetchAgendaClinicaMetrics más abajo, ya dejado listo para activar.
-const SCORE_WEIGHTS = { estadoPagos: 2, morosidad: 1 };
-const DISPLAY_WEIGHTS = { valorFacturado: 20, estadoPagos: 10, morosidad: 5, dtesAlDia: 5 };
+// DTES_DISPLAY_WEIGHT es el peso original de dtesAlDia en
+// control-Front/.../healthScoreConstants.js — solo para mostrar su barra en
+// la UI (en gris, countsTowardScore:false), no pesa en el score. Cuando se
+// conecte Agenda Clínica, reemplazar SCORE_WEIGHTS por el cálculo completo
+// (USO+VALOR+PAGA) con los pesos originales — ver _fetchAgendaClinicaMetrics
+// más abajo, ya dejado listo para activar.
+const SCORE_WEIGHTS = { estadoPagos: 57, morosidad: 28, valorFacturado: 15 };
+const DTES_DISPLAY_WEIGHT = 5;
 const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
 
 function _normalizeValorFacturado(monto, ceiling) {
@@ -350,19 +352,18 @@ function _buildFinanceScore(finance, valorCeiling) {
   else if (score >= SCORE_THRESHOLDS.WARNING) status = 'warning';
 
   // Métricas que SÍ pesan en el score muestran su peso REAL (normalizado a
-  // 100 entre lo que efectivamente cuenta hoy — ver SCORE_WEIGHTS), no el
-  // peso "de exhibición" del modelo completo. Las que no pesan (valorFacturado,
-  // dtesAlDia, USO) se marcan con countsTowardScore:false para que la UI las
-  // pinte en gris — mostrarles un % ahí sería engañoso.
+  // 100 entre lo que efectivamente cuenta hoy — ver SCORE_WEIGHTS). Las que
+  // no pesan (dtesAlDia, USO) se marcan con countsTowardScore:false para que
+  // la UI las pinte en gris — mostrarles un % ahí sería engañoso.
   const scoreWeightPercent = (key) => Math.round((SCORE_WEIGHTS[key] / totalWeight) * 100);
-  const contribution = (key) => Math.round((normalized[key] * DISPLAY_WEIGHTS[key]) / 100);
 
   const metrics = {
     valorFacturado: {
       id: 'valorFacturado', label: 'Valor facturado', category: 'valor',
-      value: finance.montoFacturado || 0, weight: DISPLAY_WEIGHTS.valorFacturado,
+      value: finance.montoFacturado || 0, weight: scoreWeightPercent('valorFacturado'),
       maxPossible: valorCeiling, normalizedValue: normalized.valorFacturado,
-      contribution: contribution('valorFacturado'), unit: '$', countsTowardScore: false,
+      contribution: Math.round((normalized.valorFacturado * scoreWeightPercent('valorFacturado')) / 100),
+      unit: '$', countsTowardScore: true,
     },
     estadoPagos: {
       id: 'estadoPagos', label: 'Estado de pagos', category: 'paga',
@@ -380,9 +381,10 @@ function _buildFinanceScore(finance, valorCeiling) {
     },
     dtesAlDia: {
       id: 'dtesAlDia', label: 'DTEs al día', category: 'paga',
-      value: finance.dtesAlDia, weight: DISPLAY_WEIGHTS.dtesAlDia,
+      value: finance.dtesAlDia, weight: DTES_DISPLAY_WEIGHT,
       maxPossible: 1, normalizedValue: normalized.dtesAlDia,
-      contribution: contribution('dtesAlDia'), unit: '', countsTowardScore: false,
+      contribution: Math.round((normalized.dtesAlDia * DTES_DISPLAY_WEIGHT) / 100),
+      unit: '', countsTowardScore: false,
     },
   };
 
