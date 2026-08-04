@@ -212,20 +212,31 @@ async function getClientFinanceMetrics(nombreCliente) {
   }
 }
 
-// ── Cálculo de score (VALOR + PAGA — USO pendiente de Agenda Clínica) ─────
+// ── Cálculo de score (PAGA — USO pendiente de Agenda Clínica) ─────────────
 //
-// Mientras Agenda Clínica no esté conectada, el score/status se calcula solo
-// con lo que Finance ya sabe: valor facturado + comportamiento de pago. Esto
-// SÍ es un status real y accionable para priorizar (cliente atrasado en pago
-// o con DTE rechazado sale crítico/en riesgo de verdad), no un placeholder.
+// Mientras Agenda Clínica no esté conectada, el status se calcula SOLO con
+// comportamiento de pago (estadoPagos + morosidad + dtesAlDia): esto SÍ es
+// un status real y accionable para priorizar (cliente atrasado en pago o
+// con DTE rechazado sale crítico/en riesgo de verdad), no un placeholder.
+//
+// valorFacturado se muestra igual como métrica informativa (bloque VALOR),
+// pero NO entra al score: su normalización asume $5M como "excelente", una
+// escala pensada para cuando USO (60% del modelo completo) también aporta.
+// Con subscripciones típicas de ~$10-50k, esa escala deja normalizedValue
+// cerca de 0 SIEMPRE — si pesara en el score, ningún cliente llegaría nunca
+// a "healthy" sin importar qué tan bien pague, que es justo lo que no
+// queremos (el pedido explícito fue "status real basado en pagos").
 //
 // Pesos proporcionales a los de control-Front/.../healthScoreConstants.js
-// (VALOR 20 : PAGA estadoPagos 10 : morosidad 5 : dtesAlDia 5 → misma razón
-// 4:2:1:1, reescalados a 100 porque hoy USO no aporta puntos). Cuando se
-// conecte Agenda Clínica, reemplazar este bloque por el cálculo completo
-// (USO+VALOR+PAGA) usando los pesos originales sin reescalar — ver
-// _fetchAgendaClinicaMetrics más abajo, ya dejado listo para activar.
-const FINANCE_SCORE_WEIGHTS = { valorFacturado: 50, estadoPagos: 25, morosidad: 12.5, dtesAlDia: 12.5 };
+// (PAGA: estadoPagos 10 : morosidad 5 : dtesAlDia 5 → razón 2:1:1,
+// reescalados a 100). DISPLAY_WEIGHTS son los pesos originales (incluye
+// valorFacturado 20) solo para mostrar en las barras de la UI — no se usan
+// para calcular el score. Cuando se conecte Agenda Clínica, reemplazar este
+// bloque por el cálculo completo (USO+VALOR+PAGA) con los pesos originales
+// sin reescalar — ver _fetchAgendaClinicaMetrics más abajo, ya dejado listo
+// para activar.
+const SCORE_WEIGHTS = { estadoPagos: 50, morosidad: 25, dtesAlDia: 25 };
+const DISPLAY_WEIGHTS = { valorFacturado: 20, estadoPagos: 10, morosidad: 5, dtesAlDia: 5 };
 const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
 
 function _normalizeValorFacturado(monto) {
@@ -257,8 +268,8 @@ function _buildFinanceScore(finance) {
   };
 
   let score = 0;
-  for (const [key, value] of Object.entries(normalized)) {
-    score += (value * FINANCE_SCORE_WEIGHTS[key]) / 100;
+  for (const [key, value] of Object.entries(SCORE_WEIGHTS)) {
+    score += (normalized[key] * value) / 100;
   }
   score = Math.round(score);
 
@@ -266,30 +277,33 @@ function _buildFinanceScore(finance) {
   if (score >= SCORE_THRESHOLDS.HEALTHY) status = 'healthy';
   else if (score >= SCORE_THRESHOLDS.WARNING) status = 'warning';
 
-  const contribution = (key) => Math.round((normalized[key] * FINANCE_SCORE_WEIGHTS[key]) / 100);
+  // Contribución mostrada en la UI usa los pesos "de exhibición" (originales),
+  // no los pesos de score — así valorFacturado se ve consistente con el resto
+  // de las barras aunque no pondere en el status.
+  const contribution = (key) => Math.round((normalized[key] * DISPLAY_WEIGHTS[key]) / 100);
 
   const metrics = {
     valorFacturado: {
       id: 'valorFacturado', label: 'Valor facturado', category: 'valor',
-      value: finance.montoFacturado || 0, weight: FINANCE_SCORE_WEIGHTS.valorFacturado,
+      value: finance.montoFacturado || 0, weight: DISPLAY_WEIGHTS.valorFacturado,
       maxPossible: 5000000, normalizedValue: normalized.valorFacturado,
       contribution: contribution('valorFacturado'), unit: '$',
     },
     estadoPagos: {
       id: 'estadoPagos', label: 'Estado de pagos', category: 'paga',
-      value: finance.estadoPagos, weight: FINANCE_SCORE_WEIGHTS.estadoPagos,
+      value: finance.estadoPagos, weight: DISPLAY_WEIGHTS.estadoPagos,
       maxPossible: 1, normalizedValue: normalized.estadoPagos,
       contribution: contribution('estadoPagos'), unit: '',
     },
     morosidad: {
       id: 'morosidad', label: 'Morosidad', category: 'paga',
-      value: finance.morosidad || 0, weight: FINANCE_SCORE_WEIGHTS.morosidad,
+      value: finance.morosidad || 0, weight: DISPLAY_WEIGHTS.morosidad,
       maxPossible: 90, normalizedValue: normalized.morosidad,
       contribution: contribution('morosidad'), unit: 'días atraso',
     },
     dtesAlDia: {
       id: 'dtesAlDia', label: 'DTEs al día', category: 'paga',
-      value: finance.dtesAlDia, weight: FINANCE_SCORE_WEIGHTS.dtesAlDia,
+      value: finance.dtesAlDia, weight: DISPLAY_WEIGHTS.dtesAlDia,
       maxPossible: 1, normalizedValue: normalized.dtesAlDia,
       contribution: contribution('dtesAlDia'), unit: '',
     },
