@@ -13,6 +13,7 @@
 import DataBase from '../config/Database.js';
 import Proyectos from '../model/Proyectos.js';
 import { decryptApiKey } from '../utils/encryption.js';
+import { getMRRyARPA, getChurnSnapshot } from '../model/MetricasNegocio.js';
 
 const db = () => DataBase.getInstance();
 
@@ -113,14 +114,14 @@ async function getClientConfig(nombreCliente) {
  *
  * @param {string|null} nombreCliente - si se pasa, filtra a un solo cliente
  */
-// monto_acordado normalizado a equivalente MENSUAL — mismo criterio que ya
-// usa MetricasNegocio.js (MRR_CASE) para no comparar un cliente Anual contra
-// uno Mensual como si fueran la misma unidad.
-const MONTO_MENSUAL_CASE = `
+// monto_acordado normalizado a equivalente ANUAL — "cuánto perderíamos si
+// este cliente se va" en un año, no solo su cuota del mes. Mismo criterio de
+// ciclo_facturacion que MetricasNegocio.js (MRR_CASE), llevado a anual.
+const MONTO_ANUAL_CASE = `
   CASE ciclo_facturacion
-    WHEN 'Mensual'    THEN monto_acordado
-    WHEN 'Trimestral' THEN monto_acordado / 3
-    WHEN 'Anual'      THEN monto_acordado / 12
+    WHEN 'Mensual'    THEN monto_acordado * 12
+    WHEN 'Trimestral' THEN monto_acordado * 4
+    WHEN 'Anual'      THEN monto_acordado
     ELSE 0
   END
 `;
@@ -135,7 +136,7 @@ async function _getProyectosFinancieros(nombreCliente = null) {
 
   const rows = await db().ejecutarQuery(`
     SELECT id_proyecto, nombre_cliente, ciclo_facturacion, fecha_proximo_pago,
-           ${MONTO_MENSUAL_CASE} AS monto_mensual
+           ${MONTO_ANUAL_CASE} AS monto_anual
     FROM proyectos
     WHERE ${where}
   `, params);
@@ -144,22 +145,19 @@ async function _getProyectosFinancieros(nombreCliente = null) {
 }
 
 /**
- * Techo dinámico para "Valor facturado" — el mejor cliente activo (mensualizado)
- * × 1.5, en vez de un número fijo inventado. Se recalcula solo: si el
- * portafolio crece, el techo crece con él, sin tener que tocar código.
+ * Techo para "Valor facturado" = LTV real del negocio (ARPA ÷ Churn Rate),
+ * la misma fórmula que ya usa /clientes/metricas (MetricasController.js) —
+ * no se inventa un multiplicador nuevo acá. Si mejora el cálculo de LTV allá
+ * (ej. con historial real de cancelación), este techo mejora solo con eso.
+ * Fallback: si no hay churn registrado (churnRate 0), un año de ARPA.
  */
 async function _getValorCeiling() {
-  const rows = await db().ejecutarQuery(`
-    SELECT SUM(${MONTO_MENSUAL_CASE}) AS monto_mensual
-    FROM proyectos
-    WHERE ${CLIENTE_ACTIVO_FILTER}
-    GROUP BY nombre_cliente
-    ORDER BY monto_mensual DESC
-    LIMIT 1
-  `, []);
+  const [mrrArpa, churn] = await Promise.all([getMRRyARPA(), getChurnSnapshot()]);
 
-  const maxMensual = Number(rows[0]?.monto_mensual || 0);
-  return maxMensual > 0 ? Math.round(maxMensual * 1.5) : 100000;
+  if (churn.churnRate > 0) {
+    return Math.round(mrrArpa.arpa / churn.churnRate);
+  }
+  return Math.round(mrrArpa.arpa * 12) || 1200000;
 }
 
 /**
@@ -187,7 +185,7 @@ async function _getProyectosConDteRechazado(idsProyecto) {
  * un segundo criterio de "cliente atrasado".
  */
 function _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds) {
-  const montoFacturado = proyectosCliente.reduce((sum, p) => sum + Number(p.monto_mensual || 0), 0);
+  const montoFacturado = proyectosCliente.reduce((sum, p) => sum + Number(p.monto_anual || 0), 0);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -437,17 +435,15 @@ export async function getAllScores(filter = 'activos') {
       porCliente.get(p.nombre_cliente).push(p);
     }
 
-    const dteRechazadoIds = await _getProyectosConDteRechazado(proyectos.map(p => p.id_proyecto));
+    const [dteRechazadoIds, valorCeiling] = await Promise.all([
+      _getProyectosConDteRechazado(proyectos.map(p => p.id_proyecto)),
+      _getValorCeiling(),
+    ]);
 
-    // Financia por cliente primero (sin score) para poder sacar el techo de
-    // "Valor facturado" del propio portafolio (mejor cliente × 1.5), en vez
-    // de un número fijo desconectado de la realidad del negocio.
     const financeByClient = new Map();
     for (const [nombreCliente, proyectosCliente] of porCliente) {
       financeByClient.set(nombreCliente, _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds));
     }
-    const maxMontoFacturado = Math.max(0, ...Array.from(financeByClient.values(), f => f.montoFacturado));
-    const valorCeiling = maxMontoFacturado > 0 ? Math.round(maxMontoFacturado * 1.5) : 100000;
 
     return Array.from(financeByClient.entries()).map(([nombreCliente, finance]) => {
       const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling);
