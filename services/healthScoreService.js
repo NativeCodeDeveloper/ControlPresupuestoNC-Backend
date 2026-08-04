@@ -113,6 +113,18 @@ async function getClientConfig(nombreCliente) {
  *
  * @param {string|null} nombreCliente - si se pasa, filtra a un solo cliente
  */
+// monto_acordado normalizado a equivalente MENSUAL — mismo criterio que ya
+// usa MetricasNegocio.js (MRR_CASE) para no comparar un cliente Anual contra
+// uno Mensual como si fueran la misma unidad.
+const MONTO_MENSUAL_CASE = `
+  CASE ciclo_facturacion
+    WHEN 'Mensual'    THEN monto_acordado
+    WHEN 'Trimestral' THEN monto_acordado / 3
+    WHEN 'Anual'      THEN monto_acordado / 12
+    ELSE 0
+  END
+`;
+
 async function _getProyectosFinancieros(nombreCliente = null) {
   const params = [];
   let where = CLIENTE_ACTIVO_FILTER;
@@ -122,12 +134,32 @@ async function _getProyectosFinancieros(nombreCliente = null) {
   }
 
   const rows = await db().ejecutarQuery(`
-    SELECT id_proyecto, nombre_cliente, monto_acordado, ciclo_facturacion, fecha_proximo_pago
+    SELECT id_proyecto, nombre_cliente, ciclo_facturacion, fecha_proximo_pago,
+           ${MONTO_MENSUAL_CASE} AS monto_mensual
     FROM proyectos
     WHERE ${where}
   `, params);
 
   return Array.isArray(rows) ? rows : [];
+}
+
+/**
+ * Techo dinámico para "Valor facturado" — el mejor cliente activo (mensualizado)
+ * × 1.5, en vez de un número fijo inventado. Se recalcula solo: si el
+ * portafolio crece, el techo crece con él, sin tener que tocar código.
+ */
+async function _getValorCeiling() {
+  const rows = await db().ejecutarQuery(`
+    SELECT SUM(${MONTO_MENSUAL_CASE}) AS monto_mensual
+    FROM proyectos
+    WHERE ${CLIENTE_ACTIVO_FILTER}
+    GROUP BY nombre_cliente
+    ORDER BY monto_mensual DESC
+    LIMIT 1
+  `, []);
+
+  const maxMensual = Number(rows[0]?.monto_mensual || 0);
+  return maxMensual > 0 ? Math.round(maxMensual * 1.5) : 100000;
 }
 
 /**
@@ -155,7 +187,7 @@ async function _getProyectosConDteRechazado(idsProyecto) {
  * un segundo criterio de "cliente atrasado".
  */
 function _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds) {
-  const montoFacturado = proyectosCliente.reduce((sum, p) => sum + Number(p.monto_acordado || 0), 0);
+  const montoFacturado = proyectosCliente.reduce((sum, p) => sum + Number(p.monto_mensual || 0), 0);
 
   const today = new Date();
   today.setHours(0, 0, 0, 0);
@@ -239,9 +271,8 @@ const SCORE_WEIGHTS = { estadoPagos: 50, morosidad: 25, dtesAlDia: 25 };
 const DISPLAY_WEIGHTS = { valorFacturado: 20, estadoPagos: 10, morosidad: 5, dtesAlDia: 5 };
 const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
 
-function _normalizeValorFacturado(monto) {
-  const max = 5000000; // $5M = 100 (misma escala que el frontend)
-  return Math.round(Math.min(100, (Math.sqrt(monto) / Math.sqrt(max)) * 100));
+function _normalizeValorFacturado(monto, ceiling) {
+  return Math.round(Math.min(100, (Math.sqrt(monto) / Math.sqrt(ceiling)) * 100));
 }
 
 function _normalizeEstadoPagos(estado) {
@@ -295,9 +326,9 @@ function _buildUsoPlaceholderMetrics() {
   };
 }
 
-function _buildFinanceScore(finance) {
+function _buildFinanceScore(finance, valorCeiling) {
   const normalized = {
-    valorFacturado: _normalizeValorFacturado(finance.montoFacturado || 0),
+    valorFacturado: _normalizeValorFacturado(finance.montoFacturado || 0, valorCeiling),
     estadoPagos: _normalizeEstadoPagos(finance.estadoPagos),
     morosidad: _normalizeMorosidad(finance.morosidad || 0),
     dtesAlDia: _normalizeDtesAlDia(finance.dtesAlDia),
@@ -322,7 +353,7 @@ function _buildFinanceScore(finance) {
     valorFacturado: {
       id: 'valorFacturado', label: 'Valor facturado', category: 'valor',
       value: finance.montoFacturado || 0, weight: DISPLAY_WEIGHTS.valorFacturado,
-      maxPossible: 5000000, normalizedValue: normalized.valorFacturado,
+      maxPossible: valorCeiling, normalizedValue: normalized.valorFacturado,
       contribution: contribution('valorFacturado'), unit: '$',
     },
     estadoPagos: {
@@ -408,9 +439,18 @@ export async function getAllScores(filter = 'activos') {
 
     const dteRechazadoIds = await _getProyectosConDteRechazado(proyectos.map(p => p.id_proyecto));
 
-    return Array.from(porCliente.entries()).map(([nombreCliente, proyectosCliente]) => {
-      const finance = _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds);
-      const { score, status, metrics } = _buildFinanceScore(finance);
+    // Financia por cliente primero (sin score) para poder sacar el techo de
+    // "Valor facturado" del propio portafolio (mejor cliente × 1.5), en vez
+    // de un número fijo desconectado de la realidad del negocio.
+    const financeByClient = new Map();
+    for (const [nombreCliente, proyectosCliente] of porCliente) {
+      financeByClient.set(nombreCliente, _aggregateFinanceMetrics(proyectosCliente, dteRechazadoIds));
+    }
+    const maxMontoFacturado = Math.max(0, ...Array.from(financeByClient.values(), f => f.montoFacturado));
+    const valorCeiling = maxMontoFacturado > 0 ? Math.round(maxMontoFacturado * 1.5) : 100000;
+
+    return Array.from(financeByClient.entries()).map(([nombreCliente, finance]) => {
+      const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling);
 
       return {
         clientId: nombreCliente,
@@ -438,8 +478,11 @@ export async function getScore(clientId) {
     // todavía — queda a la espera de que Agenda Clínica exponga /health.
     const config = await getClientConfig(clientId);
 
-    const finance = await getClientFinanceMetrics(clientId);
-    const { score, status, metrics } = _buildFinanceScore(finance);
+    const [finance, valorCeiling] = await Promise.all([
+      getClientFinanceMetrics(clientId),
+      _getValorCeiling(),
+    ]);
+    const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling);
 
     return {
       clientId,
