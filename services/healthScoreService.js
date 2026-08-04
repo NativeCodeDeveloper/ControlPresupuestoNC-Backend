@@ -349,9 +349,12 @@ function _buildFinanceScore(finance, valorCeiling) {
   if (score >= SCORE_THRESHOLDS.HEALTHY) status = 'healthy';
   else if (score >= SCORE_THRESHOLDS.WARNING) status = 'warning';
 
-  // Contribución mostrada en la UI usa los pesos "de exhibición" (originales),
-  // no los pesos de score — así valorFacturado se ve consistente con el resto
-  // de las barras aunque no pondere en el status.
+  // Métricas que SÍ pesan en el score muestran su peso REAL (normalizado a
+  // 100 entre lo que efectivamente cuenta hoy — ver SCORE_WEIGHTS), no el
+  // peso "de exhibición" del modelo completo. Las que no pesan (valorFacturado,
+  // dtesAlDia, USO) se marcan con countsTowardScore:false para que la UI las
+  // pinte en gris — mostrarles un % ahí sería engañoso.
+  const scoreWeightPercent = (key) => Math.round((SCORE_WEIGHTS[key] / totalWeight) * 100);
   const contribution = (key) => Math.round((normalized[key] * DISPLAY_WEIGHTS[key]) / 100);
 
   const metrics = {
@@ -359,29 +362,35 @@ function _buildFinanceScore(finance, valorCeiling) {
       id: 'valorFacturado', label: 'Valor facturado', category: 'valor',
       value: finance.montoFacturado || 0, weight: DISPLAY_WEIGHTS.valorFacturado,
       maxPossible: valorCeiling, normalizedValue: normalized.valorFacturado,
-      contribution: contribution('valorFacturado'), unit: '$',
+      contribution: contribution('valorFacturado'), unit: '$', countsTowardScore: false,
     },
     estadoPagos: {
       id: 'estadoPagos', label: 'Estado de pagos', category: 'paga',
-      value: finance.estadoPagos, weight: DISPLAY_WEIGHTS.estadoPagos,
+      value: finance.estadoPagos, weight: scoreWeightPercent('estadoPagos'),
       maxPossible: 1, normalizedValue: normalized.estadoPagos,
-      contribution: contribution('estadoPagos'), unit: '',
+      contribution: Math.round((normalized.estadoPagos * scoreWeightPercent('estadoPagos')) / 100),
+      unit: '', countsTowardScore: true,
     },
     morosidad: {
       id: 'morosidad', label: 'Morosidad', category: 'paga',
-      value: finance.morosidad || 0, weight: DISPLAY_WEIGHTS.morosidad,
+      value: finance.morosidad || 0, weight: scoreWeightPercent('morosidad'),
       maxPossible: 90, normalizedValue: normalized.morosidad,
-      contribution: contribution('morosidad'), unit: 'días atraso',
+      contribution: Math.round((normalized.morosidad * scoreWeightPercent('morosidad')) / 100),
+      unit: 'días atraso', countsTowardScore: true,
     },
     dtesAlDia: {
       id: 'dtesAlDia', label: 'DTEs al día', category: 'paga',
       value: finance.dtesAlDia, weight: DISPLAY_WEIGHTS.dtesAlDia,
       maxPossible: 1, normalizedValue: normalized.dtesAlDia,
-      contribution: contribution('dtesAlDia'), unit: '',
+      contribution: contribution('dtesAlDia'), unit: '', countsTowardScore: false,
     },
   };
 
-  return { score, status, metrics: { ..._buildUsoPlaceholderMetrics(), ...metrics } };
+  const usoMetrics = Object.fromEntries(
+    Object.entries(_buildUsoPlaceholderMetrics()).map(([k, m]) => [k, { ...m, countsTowardScore: false }])
+  );
+
+  return { score, status, metrics: { ...usoMetrics, ...metrics } };
 }
 
 /**
