@@ -14,6 +14,7 @@ import {
   getHealthScore,
   getHealthScoreHistory,
   getHealthScoreStats,
+  getPortfolioHistory,
 } from '../controller/healthScoreController.js';
 
 const router = Router();
@@ -48,5 +49,13 @@ router.get('/companies/:clientId/history', getHealthScoreHistory);
  * Obtiene estadísticas agregadas
  */
 router.get('/stats', getHealthScoreStats);
+
+/**
+ * GET /api/health-score/historial
+ * Tendencia de la distribución de cartera (un snapshot por día)
+ * Query params:
+ * - days: cuántos días hacia atrás (default 90)
+ */
+router.get('/historial', getPortfolioHistory);
 
 export default router;

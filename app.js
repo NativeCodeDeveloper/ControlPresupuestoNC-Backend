@@ -58,6 +58,7 @@ import calendarioRoutes from "./view/calendarioRoutes.js";
 import { ejecutarRecordatoriosCalendario, limpiarNotificacionesAntiguas } from "./services/calendarioReminderService.js";
 import dteRoutes from "./view/dteRoutes.js";
 import { actualizarEstadosPendientes } from "./services/dteService.js";
+import { capturePortfolioSnapshot } from "./services/healthScoreService.js";
 
 
 const app = express();
@@ -322,12 +323,33 @@ httpServer.listen(PORT, () => {
         dteHandle.unref();
     }
 
+    // CRON HEALTH SCORE: snapshot diario de la distribución de cartera para
+    // graficar tendencia — cada 6h, idempotente (upsert por fecha, ver
+    // capturePortfolioSnapshot), así que reinicios del server durante el día
+    // no generan filas duplicadas ni se pierden si se cae uno de los ticks.
+    const healthScoreHandle = setInterval(() => {
+        capturePortfolioSnapshot().catch((err) => {
+            console.error('[HEALTH SCORE] Error inesperado en cron de snapshot:', err?.message || err);
+        });
+    }, 6 * 60 * 60 * 1000);
+
+    if (typeof healthScoreHandle.unref === "function") {
+        healthScoreHandle.unref();
+    }
+
     // CRON CLIENT: desactivado — los avisos al cliente se envían manualmente desde el cockpit
 
     // Ejecutar billing una vez al iniciar para no esperar 6 horas
     setTimeout(() => {
         ejecutarRecordatoriosCobro().catch((err) => {
             console.error('[BILLING] Error en primera ejecución:', err?.message || err);
+        });
+    }, 15000);
+
+    // Ejecutar snapshot de Health Score una vez al iniciar (no esperar 6h)
+    setTimeout(() => {
+        capturePortfolioSnapshot().catch((err) => {
+            console.error('[HEALTH SCORE] Error en snapshot inicial:', err?.message || err);
         });
     }, 15000);
 

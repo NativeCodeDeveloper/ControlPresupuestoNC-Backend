@@ -548,6 +548,58 @@ export async function getStats() {
   }
 }
 
+/**
+ * Guarda (o actualiza) el snapshot de HOY con la distribución actual de
+ * cartera. Idempotente — se puede llamar varias veces el mismo día (el cron
+ * corre cada 6h) sin generar duplicados, gracias al UNIQUE KEY en `fecha`;
+ * cada llamada simplemente deja el snapshot más reciente de ese día.
+ * Requiere la tabla health_score_historial (ver migrations/health_score_historial.sql).
+ */
+export async function capturePortfolioSnapshot() {
+  try {
+    const stats = await getStats();
+    const fecha = new Date().toISOString().slice(0, 10);
+
+    await db().ejecutarQuery(`
+      INSERT INTO health_score_historial (fecha, total, healthy, warning, critical, cancelled)
+      VALUES (?, ?, ?, ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        total = VALUES(total),
+        healthy = VALUES(healthy),
+        warning = VALUES(warning),
+        critical = VALUES(critical),
+        cancelled = VALUES(cancelled)
+    `, [fecha, stats.total, stats.healthy, stats.warning, stats.critical, stats.cancelled]);
+
+    return { ok: true, fecha, stats };
+  } catch (error) {
+    console.error('[healthScoreService.capturePortfolioSnapshot]', error);
+    return { ok: false, error: error.message };
+  }
+}
+
+/**
+ * Historial de distribución de cartera para graficar tendencia.
+ * @param {number} days - cuántos días hacia atrás traer (default 90)
+ */
+export async function getPortfolioHistory(days = 90) {
+  try {
+    const rows = await db().ejecutarQuery(`
+      SELECT fecha, total, healthy, warning, critical, cancelled
+      FROM health_score_historial
+      WHERE fecha >= DATE_SUB(CURDATE(), INTERVAL ? DAY)
+      ORDER BY fecha ASC
+    `, [days]);
+
+    return Array.isArray(rows) ? rows : [];
+  } catch (error) {
+    // Tabla puede no existir todavía si la migración no se aplicó — no
+    // romper el resto del feature por esto, solo devolver vacío.
+    console.error('[healthScoreService.getPortfolioHistory]', error);
+    return [];
+  }
+}
+
 // ── Helpers ─────────────────────────────────────────────────────────────
 
 async function _hasColumn(table, column) {
@@ -571,4 +623,6 @@ export default {
   getHistory,
   getStats,
   getClientConfig,
+  capturePortfolioSnapshot,
+  getPortfolioHistory,
 };

@@ -75,3 +75,20 @@ export const getHealthScoreStats = async (req, res) => {
     res.status(500).json({ error: 'Error al obtener estadísticas' });
   }
 };
+
+/**
+ * GET /api/health-score/historial
+ * Tendencia de la distribución de cartera en el tiempo (un snapshot por día)
+ * Query params:
+ * - days: cuántos días hacia atrás (default 90)
+ */
+export const getPortfolioHistory = async (req, res) => {
+  try {
+    const { days = 90 } = req.query;
+    const historial = await healthScoreService.getPortfolioHistory(parseInt(days));
+    res.json(historial);
+  } catch (error) {
+    console.error('[healthScoreController.getPortfolioHistory]', error);
+    res.status(500).json({ error: 'Error al obtener historial de cartera' });
+  }
+};
