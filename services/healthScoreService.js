@@ -244,28 +244,33 @@ async function getClientFinanceMetrics(nombreCliente) {
 
 // ── Cálculo de score (PAGA — USO pendiente de Agenda Clínica) ─────────────
 //
-// Mientras Agenda Clínica no esté conectada, el status se calcula SOLO con
-// comportamiento de pago (estadoPagos + morosidad + dtesAlDia): esto SÍ es
-// un status real y accionable para priorizar (cliente atrasado en pago o
-// con DTE rechazado sale crítico/en riesgo de verdad), no un placeholder.
+// Mientras Agenda Clínica no esté conectada, el status se calcula con
+// comportamiento de pago (estadoPagos + morosidad): esto SÍ es un status
+// real y accionable para priorizar (cliente atrasado en pago sale
+// crítico/en riesgo de verdad), no un placeholder.
 //
-// valorFacturado se muestra igual como métrica informativa (bloque VALOR),
-// pero NO entra al score: su normalización asume $5M como "excelente", una
-// escala pensada para cuando USO (60% del modelo completo) también aporta.
-// Con subscripciones típicas de ~$10-50k, esa escala deja normalizedValue
-// cerca de 0 SIEMPRE — si pesara en el score, ningún cliente llegaría nunca
-// a "healthy" sin importar qué tan bien pague, que es justo lo que no
-// queremos (el pedido explícito fue "status real basado en pagos").
+// dtesAlDia queda FUERA del score por ahora — pedido explícito del usuario:
+// la verificación de DTE todavía no está integrada para este flujo, así que
+// no es un dato confiable para pesar en el status. Se sigue mostrando en la
+// tarjeta (bloque Pagos) como informativo, solo que no cuenta. Reactivar
+// agregándolo de vuelta a SCORE_WEIGHTS cuando esté listo.
 //
-// Pesos proporcionales a los de control-Front/.../healthScoreConstants.js
-// (PAGA: estadoPagos 10 : morosidad 5 : dtesAlDia 5 → razón 2:1:1,
-// reescalados a 100). DISPLAY_WEIGHTS son los pesos originales (incluye
-// valorFacturado 20) solo para mostrar en las barras de la UI — no se usan
-// para calcular el score. Cuando se conecte Agenda Clínica, reemplazar este
-// bloque por el cálculo completo (USO+VALOR+PAGA) con los pesos originales
-// sin reescalar — ver _fetchAgendaClinicaMetrics más abajo, ya dejado listo
-// para activar.
-const SCORE_WEIGHTS = { estadoPagos: 50, morosidad: 25, dtesAlDia: 25 };
+// valorFacturado tampoco entra al score — ver getValorCeiling: su techo es
+// el LTV real del negocio, pensado para leerse solo como referencia, no
+// como parte de "cliente paga o no paga" (el pedido explícito fue "status
+// real basado en pagos").
+//
+// El loop de abajo normaliza por la SUMA de los pesos presentes (no asume
+// que sumen 100) — así sacar/meter una métrica del score no rompe el techo
+// de 100 puntos ni obliga a recalcular a mano el resto de los pesos.
+//
+// DISPLAY_WEIGHTS son los pesos originales de
+// control-Front/.../healthScoreConstants.js (incluye valorFacturado 20 y
+// dtesAlDia 5) — solo para mostrar en las barras de la UI, no para el
+// score. Cuando se conecte Agenda Clínica, reemplazar SCORE_WEIGHTS por el
+// cálculo completo (USO+VALOR+PAGA) con los pesos originales — ver
+// _fetchAgendaClinicaMetrics más abajo, ya dejado listo para activar.
+const SCORE_WEIGHTS = { estadoPagos: 2, morosidad: 1 };
 const DISPLAY_WEIGHTS = { valorFacturado: 20, estadoPagos: 10, morosidad: 5, dtesAlDia: 5 };
 const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
 
@@ -332,11 +337,13 @@ function _buildFinanceScore(finance, valorCeiling) {
     dtesAlDia: _normalizeDtesAlDia(finance.dtesAlDia),
   };
 
-  let score = 0;
-  for (const [key, value] of Object.entries(SCORE_WEIGHTS)) {
-    score += (normalized[key] * value) / 100;
+  let weightedSum = 0;
+  let totalWeight = 0;
+  for (const [key, weight] of Object.entries(SCORE_WEIGHTS)) {
+    weightedSum += normalized[key] * weight;
+    totalWeight += weight;
   }
-  score = Math.round(score);
+  const score = Math.round(weightedSum / totalWeight);
 
   let status = 'critical';
   if (score >= SCORE_THRESHOLDS.HEALTHY) status = 'healthy';
