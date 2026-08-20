@@ -58,7 +58,7 @@ import calendarioRoutes from "./view/calendarioRoutes.js";
 import { ejecutarRecordatoriosCalendario, limpiarNotificacionesAntiguas } from "./services/calendarioReminderService.js";
 import dteRoutes from "./view/dteRoutes.js";
 import { actualizarEstadosPendientes } from "./services/dteService.js";
-import { capturePortfolioSnapshot } from "./services/healthScoreService.js";
+import { capturePortfolioSnapshot, refreshUsoMetricsCache } from "./services/healthScoreService.js";
 
 
 const app = express();
@@ -337,6 +337,20 @@ httpServer.listen(PORT, () => {
         healthScoreHandle.unref();
     }
 
+    // CRON HEALTH SCORE USO: una vez al día, llama a /health-metrics de cada
+    // cliente con API key configurada (Agenda Clínica) y guarda el resultado
+    // en health_score_uso_cache. Un cliente caído no rompe a los demás — ver
+    // refreshUsoMetricsCache (Promise.allSettled + timeout por llamada).
+    const usoMetricsHandle = setInterval(() => {
+        refreshUsoMetricsCache().catch((err) => {
+            console.error('[HEALTH SCORE USO] Error inesperado en cron:', err?.message || err);
+        });
+    }, 24 * 60 * 60 * 1000);
+
+    if (typeof usoMetricsHandle.unref === "function") {
+        usoMetricsHandle.unref();
+    }
+
     // CRON CLIENT: desactivado — los avisos al cliente se envían manualmente desde el cockpit
 
     // Ejecutar billing una vez al iniciar para no esperar 6 horas
@@ -352,6 +366,13 @@ httpServer.listen(PORT, () => {
             console.error('[HEALTH SCORE] Error en snapshot inicial:', err?.message || err);
         });
     }, 15000);
+
+    // Ejecutar refresh de métricas de USO una vez al iniciar (no esperar 24h)
+    setTimeout(() => {
+        refreshUsoMetricsCache().catch((err) => {
+            console.error('[HEALTH SCORE USO] Error en refresh inicial:', err?.message || err);
+        });
+    }, 20000);
 
     // Ejecutar una vez al iniciar el servidor
     setTimeout(() => {

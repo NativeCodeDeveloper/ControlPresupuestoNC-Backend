@@ -345,7 +345,26 @@ function _buildUsoPlaceholderMetrics() {
   };
 }
 
-function _buildFinanceScore(finance, valorCeiling) {
+// Definición de display (label/unit/maxPossible) de cada métrica de USO —
+// misma que ya usa _buildUsoPlaceholderMetrics, para que la barra no cambie
+// de escala cuando el dato deja de estar en gris y pasa a ser real.
+const USO_METRIC_DISPLAY = {
+  diasSinActividad: { label: 'Días sin actividad', maxPossible: 60, unit: 'días sin reservar/ingresar' },
+  tendenciaSemanal: { label: 'Tendencia semanal', maxPossible: 100, unit: '% vs semana anterior' },
+  reservas: { label: 'Reservas', maxPossible: 150, unit: 'últimos 30 días' },
+  confirmaciones: { label: 'Confirmaciones', maxPossible: 100, unit: '%' },
+  fichasClinicas: { label: 'Fichas clínicas', maxPossible: 120, unit: 'creadas' },
+};
+
+/**
+ * @param {object} finance - ver getClientFinanceMetrics
+ * @param {number} valorCeiling - ver _getValorCeiling
+ * @param {object|null} uso - fila de health_score_uso_cache para este cliente,
+ *   o null si no hay caché todavía (cliente sin API key configurada, o el
+ *   cron todavía no corrió para él). Campos individuales en null también se
+ *   toleran (Agenda Clínica no pudo calcular ese campo puntual).
+ */
+function _buildFinanceScore(finance, valorCeiling, uso = null) {
   const normalized = {
     valorFacturado: _normalizeValorFacturado(finance.montoFacturado || 0, valorCeiling),
     estadoPagos: _normalizeEstadoPagos(finance.estadoPagos),
@@ -353,10 +372,31 @@ function _buildFinanceScore(finance, valorCeiling) {
     dtesAlDia: _normalizeDtesAlDia(finance.dtesAlDia),
   };
 
+  // uso llega con nombres de columna (snake_case, tal como está en la BD) —
+  // se traduce acá a las claves que usa el resto del cálculo.
+  const usoNormalized = {
+    diasSinActividad: uso ? _normalizeDiasSinActividad(uso.dias_sin_actividad) : null,
+    tendenciaSemanal: uso ? _normalizeTendenciaSemanal(uso.tendencia_semanal) : null,
+    reservas: uso ? _normalizeReservas(uso.reservas) : null,
+    confirmaciones: uso ? _normalizeConfirmaciones(uso.confirmaciones) : null,
+    fichasClinicas: uso ? _normalizeFichasClinicas(uso.fichas_clinicas) : null,
+  };
+
+  // Pesos presentes: PAGA/VALOR siempre están (Finance siempre tiene estos
+  // datos); de USO solo entran los campos que efectivamente tienen un valor
+  // hoy — mismo mecanismo de "normaliza por la suma de los pesos presentes"
+  // que ya usaba este archivo antes de conectar Agenda Clínica, solo que
+  // ahora también puede sumar métricas de USO cuando hay caché.
+  const presentWeights = { ...SCORE_WEIGHTS };
+  for (const [key, weight] of Object.entries(USO_WEIGHTS)) {
+    if (usoNormalized[key] !== null) presentWeights[key] = weight;
+  }
+  const allNormalized = { ...normalized, ...usoNormalized };
+
   let weightedSum = 0;
   let totalWeight = 0;
-  for (const [key, weight] of Object.entries(SCORE_WEIGHTS)) {
-    weightedSum += normalized[key] * weight;
+  for (const [key, weight] of Object.entries(presentWeights)) {
+    weightedSum += allNormalized[key] * weight;
     totalWeight += weight;
   }
   const score = Math.round(weightedSum / totalWeight);
@@ -366,10 +406,10 @@ function _buildFinanceScore(finance, valorCeiling) {
   else if (score >= SCORE_THRESHOLDS.WARNING) status = 'warning';
 
   // Métricas que SÍ pesan en el score muestran su peso REAL (normalizado a
-  // 100 entre lo que efectivamente cuenta hoy — ver SCORE_WEIGHTS). Las que
-  // no pesan (dtesAlDia, USO) se marcan con countsTowardScore:false para que
-  // la UI las pinte en gris — mostrarles un % ahí sería engañoso.
-  const scoreWeightPercent = (key) => Math.round((SCORE_WEIGHTS[key] / totalWeight) * 100);
+  // 100 entre lo que efectivamente cuenta hoy — ver presentWeights). Las que
+  // no pesan (dtesAlDia, USO sin dato) se marcan con countsTowardScore:false
+  // para que la UI las pinte en gris — mostrarles un % ahí sería engañoso.
+  const scoreWeightPercent = (key) => Math.round((presentWeights[key] / totalWeight) * 100);
 
   const metrics = {
     valorFacturado: {
@@ -402,8 +442,36 @@ function _buildFinanceScore(finance, valorCeiling) {
     },
   };
 
+  // Valor "crudo" de cada métrica de USO tal como viene de la caché
+  // (columnas snake_case) — para mostrarlo en la tarjeta, no para el cálculo.
+  const usoRawValues = {
+    diasSinActividad: uso?.dias_sin_actividad ?? null,
+    tendenciaSemanal: uso?.tendencia_semanal ?? null,
+    reservas: uso?.reservas ?? null,
+    confirmaciones: uso?.confirmaciones ?? null,
+    fichasClinicas: uso?.fichas_clinicas ?? null,
+  };
+
+  const usoPlaceholder = _buildUsoPlaceholderMetrics();
   const usoMetrics = Object.fromEntries(
-    Object.entries(_buildUsoPlaceholderMetrics()).map(([k, m]) => [k, { ...m, countsTowardScore: false }])
+    Object.keys(USO_WEIGHTS).map((key) => {
+      const normalizedValue = usoNormalized[key];
+      // Sin dato todavía (sin caché, cliente sin API key, o Agenda Clínica no
+      // pudo calcular este campo puntual) — placeholder en gris, mismo trato
+      // que antes de conectar Agenda Clínica.
+      if (normalizedValue === null) {
+        return [key, { ...usoPlaceholder[key], countsTowardScore: false }];
+      }
+      const display = USO_METRIC_DISPLAY[key];
+      const weight = scoreWeightPercent(key);
+      return [key, {
+        id: key, label: display.label, category: 'uso',
+        value: usoRawValues[key], weight,
+        maxPossible: display.maxPossible, normalizedValue,
+        contribution: Math.round((normalizedValue * weight) / 100),
+        unit: display.unit, countsTowardScore: true,
+      }];
+    })
   );
 
   return { score, status, metrics: { ...usoMetrics, ...metrics } };
@@ -412,30 +480,190 @@ function _buildFinanceScore(finance, valorCeiling) {
 /**
  * Trae métricas de USO desde el backend independiente de Agenda Clínica del
  * cliente (config.ruta_backend + config.api_key, ya cifrado/gestionado por
- * getClientConfig). NO ACTIVAR hasta que Agenda Clínica exponga este
- * endpoint — hoy no existe y fallarían todas las llamadas. Ver especificación
- * completa en docs/agenda-clinica-health-metrics.md (contrato para Nico).
+ * getClientConfig). Ver especificación completa en
+ * docs/agenda-clinica-health-metrics.md (contrato para Nico).
  *
- * NO llamar esto en vivo en cada getScore/getAllScores — 32+ clientes
- * significan 32+ llamadas HTTP a servidores externos distintos en cada
- * carga de página; si uno está lento o caído, se atrasa/rompe toda la
- * página. Debe ir en un cron propio (mismo patrón que
- * capturePortfolioSnapshot) que guarde el resultado en una tabla de caché
- * acá en Finance, y getScore/getAllScores lee de esa caché, nunca en vivo.
+ * Se llama SOLO desde refreshUsoMetricsCache (el cron) — nunca en vivo desde
+ * getScore/getAllScores, esos leen de health_score_uso_cache. Timeout corto
+ * (8s) para que un cliente lento/caído no cuelgue el cron entero.
  */
-// async function _fetchAgendaClinicaMetrics(config) {
-//   const res = await fetch(`${config.ruta_backend}/health-metrics`, {
-//     headers: {
-//       Authorization: `Bearer ${config.api_key}`,
-//       Accept: 'application/json',
-//     },
-//   });
-//   if (!res.ok) throw new Error(`Agenda Clínica respondió ${res.status}`);
-//   const data = await res.json();
-//   // Forma esperada (ver docs/agenda-clinica-health-metrics.md):
-//   // { diasSinActividad, tendenciaSemanal, reservas, confirmaciones, fichasClinicas }
-//   return data;
-// }
+async function _fetchAgendaClinicaMetrics(config) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+  try {
+    const res = await fetch(`${config.ruta_backend}/health-metrics`, {
+      headers: {
+        Authorization: `Bearer ${config.api_key}`,
+        Accept: 'application/json',
+      },
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Agenda Clínica respondió ${res.status}`);
+    // Forma esperada (ver docs/agenda-clinica-health-metrics.md):
+    // { diasSinActividad, tendenciaSemanal, reservas, confirmaciones, fichasClinicas }
+    return await res.json();
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+// ── Normalización de métricas de USO ───────────────────────────────────────
+// Mismos maxPossible que ya se muestran en la UI como placeholder (ver
+// _buildUsoPlaceholderMetrics) — no se inventan escalas nuevas al activar el
+// dato real, para que la barra no "salte" de escala cuando deja de estar en
+// gris. null se propaga (no 0): un cliente sin caché o con un campo que
+// Agenda Clínica no pudo calcular queda fuera del score, no penalizado.
+
+function _normalizeDiasSinActividad(dias) {
+  if (dias === null || dias === undefined) return null;
+  const max = 60;
+  if (dias <= 0) return 100;
+  if (dias >= max) return 0;
+  return Math.round(100 - (dias / max) * 100);
+}
+
+function _normalizeTendenciaSemanal(pct) {
+  if (pct === null || pct === undefined) return null;
+  // -100% (cayó todo) → 0 pts · 0% (sin cambio) → 50 pts · +100% o más → 100 pts
+  const clamped = Math.max(-100, Math.min(100, pct));
+  return Math.round(50 + clamped / 2);
+}
+
+function _normalizeReservas(count) {
+  if (count === null || count === undefined) return null;
+  return Math.round(Math.min(100, (count / 150) * 100));
+}
+
+function _normalizeConfirmaciones(pct) {
+  if (pct === null || pct === undefined) return null;
+  return Math.round(Math.max(0, Math.min(100, pct)));
+}
+
+function _normalizeFichasClinicas(count) {
+  if (count === null || count === undefined) return null;
+  return Math.round(Math.min(100, (count / 120) * 100));
+}
+
+// ── Caché de métricas de USO (Agenda Clínica) ──────────────────────────────
+
+/**
+ * Trae toda la caché de USO en una sola query — para getAllScores, evita
+ * una consulta por cliente (mismo criterio N+1 que el resto de este archivo).
+ * @returns {Map<string, object>} nombre_cliente -> fila de health_score_uso_cache
+ */
+async function _getUsoMetricsCacheMap() {
+  try {
+    const rows = await db().ejecutarQuery('SELECT * FROM health_score_uso_cache', []);
+    const map = new Map();
+    for (const row of (Array.isArray(rows) ? rows : [])) {
+      map.set(row.nombre_cliente, row);
+    }
+    return map;
+  } catch (error) {
+    // Tabla puede no existir todavía si la migración no se aplicó — no
+    // romper el resto del feature por esto (mismo criterio que
+    // getPortfolioHistory).
+    console.error('[healthScoreService._getUsoMetricsCacheMap]', error);
+    return new Map();
+  }
+}
+
+async function _getUsoMetricsForClient(nombreCliente) {
+  try {
+    const rows = await db().ejecutarQuery(
+      'SELECT * FROM health_score_uso_cache WHERE nombre_cliente = ? LIMIT 1',
+      [nombreCliente]
+    );
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('[healthScoreService._getUsoMetricsForClient]', error);
+    return null;
+  }
+}
+
+/**
+ * Cron diario: recorre los clientes con ruta_backend + api_key configurados,
+ * llama a su /health-metrics, y guarda el resultado en health_score_uso_cache.
+ * Si un cliente falla (timeout, 401, servidor caído, etc.), se registra el
+ * error en su fila y se sigue con el resto — un cliente caído no debe tumbar
+ * la actualización de los demás. La fila conserva el último dato bueno
+ * conocido cuando falla (no se pisa con nulls).
+ */
+export async function refreshUsoMetricsCache() {
+  try {
+    const clientes = await db().ejecutarQuery(`
+      SELECT p.nombre_cliente, s.ruta_backend, s.api_key_encrypted
+      FROM synapse_servidores s
+      INNER JOIN proyectos p ON s.id_proyecto = p.id_proyecto
+      WHERE s.ruta_backend IS NOT NULL AND s.ruta_backend != ''
+        AND s.api_key_encrypted IS NOT NULL AND s.api_key_encrypted != ''
+    `, []);
+
+    const resultados = await Promise.allSettled(
+      (Array.isArray(clientes) ? clientes : []).map(async (cliente) => {
+        let apiKey;
+        try {
+          apiKey = decryptApiKey(cliente.api_key_encrypted);
+        } catch (error) {
+          throw new Error(`No se pudo desencriptar la API key: ${error.message}`);
+        }
+
+        const data = await _fetchAgendaClinicaMetrics({
+          ruta_backend: cliente.ruta_backend,
+          api_key: apiKey,
+        });
+
+        await db().ejecutarQuery(`
+          INSERT INTO health_score_uso_cache
+            (nombre_cliente, dias_sin_actividad, tendencia_semanal, reservas, confirmaciones, fichas_clinicas, fetched_at, ultimo_error)
+          VALUES (?, ?, ?, ?, ?, ?, NOW(), NULL)
+          ON DUPLICATE KEY UPDATE
+            dias_sin_actividad = VALUES(dias_sin_actividad),
+            tendencia_semanal = VALUES(tendencia_semanal),
+            reservas = VALUES(reservas),
+            confirmaciones = VALUES(confirmaciones),
+            fichas_clinicas = VALUES(fichas_clinicas),
+            fetched_at = VALUES(fetched_at),
+            ultimo_error = NULL
+        `, [
+          cliente.nombre_cliente,
+          data.diasSinActividad ?? null,
+          data.tendenciaSemanal ?? null,
+          data.reservas ?? null,
+          data.confirmaciones ?? null,
+          data.fichasClinicas ?? null,
+        ]);
+
+        return cliente.nombre_cliente;
+      })
+    );
+
+    let ok = 0, fallidos = 0;
+    for (let i = 0; i < resultados.length; i++) {
+      const resultado = resultados[i];
+      if (resultado.status === 'fulfilled') {
+        ok++;
+      } else {
+        fallidos++;
+        const nombreCliente = clientes[i]?.nombre_cliente || 'desconocido';
+        const mensajeError = String(resultado.reason?.message || resultado.reason).slice(0, 500);
+        console.error(`[HEALTH SCORE USO] Falló ${nombreCliente}:`, mensajeError);
+        // Deja registrado el error sin pisar el último dato bueno conocido
+        // (solo toca ultimo_error, no los campos de métricas).
+        db().ejecutarQuery(`
+          INSERT INTO health_score_uso_cache (nombre_cliente, ultimo_error)
+          VALUES (?, ?)
+          ON DUPLICATE KEY UPDATE ultimo_error = VALUES(ultimo_error)
+        `, [nombreCliente, mensajeError]).catch(() => {});
+      }
+    }
+
+    return { ok, fallidos, total: resultados.length };
+  } catch (error) {
+    console.error('[healthScoreService.refreshUsoMetricsCache]', error);
+    return { ok: 0, fallidos: 0, total: 0, error: error.message };
+  }
+}
 
 /**
  * Obtiene Health Score de todos los clientes
@@ -466,9 +694,10 @@ export async function getAllScores(filter = 'activos') {
       porCliente.get(p.nombre_cliente).push(p);
     }
 
-    const [dteRechazadoIds, valorCeiling] = await Promise.all([
+    const [dteRechazadoIds, valorCeiling, usoCacheMap] = await Promise.all([
       _getProyectosConDteRechazado(proyectos.map(p => p.id_proyecto)),
       _getValorCeiling(),
+      _getUsoMetricsCacheMap(),
     ]);
 
     const financeByClient = new Map();
@@ -477,7 +706,7 @@ export async function getAllScores(filter = 'activos') {
     }
 
     return Array.from(financeByClient.entries()).map(([nombreCliente, finance]) => {
-      const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling);
+      const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling, usoCacheMap.get(nombreCliente) || null);
 
       return {
         clientId: nombreCliente,
@@ -495,21 +724,22 @@ export async function getAllScores(filter = 'activos') {
 }
 
 /**
- * Obtiene Health Score de un cliente específico, basado en lo que Finance ya
- * sabe (pagos + valor). Cuando Agenda Clínica esté conectada, sumar USO acá
- * (ver _fetchAgendaClinicaMetrics).
+ * Obtiene Health Score de un cliente específico — pagos/valor (Finance) +
+ * uso (Agenda Clínica, desde caché — ver refreshUsoMetricsCache).
  */
 export async function getScore(clientId) {
   try {
-    // Config de Agenda Clínica ya lista (URL + API key cifrada), sin usar
-    // todavía — queda a la espera de que Agenda Clínica exponga /health.
+    // Config de Agenda Clínica (URL + API key cifrada) — se usa solo para
+    // informar hasBackend/hasApiKey acá abajo; el fetch real a Agenda
+    // Clínica lo hace el cron (refreshUsoMetricsCache), no esto.
     const config = await getClientConfig(clientId);
 
-    const [finance, valorCeiling] = await Promise.all([
+    const [finance, valorCeiling, uso] = await Promise.all([
       getClientFinanceMetrics(clientId),
       _getValorCeiling(),
+      _getUsoMetricsForClient(clientId),
     ]);
-    const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling);
+    const { score, status, metrics } = _buildFinanceScore(finance, valorCeiling, uso);
 
     return {
       clientId,
@@ -638,4 +868,5 @@ export default {
   getClientConfig,
   capturePortfolioSnapshot,
   getPortfolioHistory,
+  refreshUsoMetricsCache,
 };
