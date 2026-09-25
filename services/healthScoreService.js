@@ -346,7 +346,7 @@ function _buildUsoPlaceholderMetrics() {
     reservas: {
       id: 'reservas', label: 'Reservas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.reservas,
-      maxPossible: 150, normalizedValue: 0, contribution: 0, unit: 'últimos 30 días',
+      maxPossible: 150, normalizedValue: 0, contribution: 0, unit: 'total',
     },
     confirmaciones: {
       id: 'confirmaciones', label: 'Confirmaciones', category: 'uso',
@@ -356,7 +356,7 @@ function _buildUsoPlaceholderMetrics() {
     fichasClinicas: {
       id: 'fichasClinicas', label: 'Fichas clínicas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.fichasClinicas,
-      maxPossible: 120, normalizedValue: 0, contribution: 0, unit: 'creadas',
+      maxPossible: 120, normalizedValue: 0, contribution: 0, unit: 'total creadas',
     },
   };
 }
@@ -367,9 +367,9 @@ function _buildUsoPlaceholderMetrics() {
 const USO_METRIC_DISPLAY = {
   diasSinActividad: { label: 'Días sin actividad', maxPossible: 60, unit: 'días sin reservar/ingresar' },
   tendenciaSemanal: { label: 'Tendencia semanal', maxPossible: 100, unit: '% vs semana anterior' },
-  reservas: { label: 'Reservas', maxPossible: 150, unit: 'últimos 30 días' },
+  reservas: { label: 'Reservas', maxPossible: 150, unit: 'total' },
   confirmaciones: { label: 'Confirmaciones', maxPossible: 100, unit: '%' },
-  fichasClinicas: { label: 'Fichas clínicas', maxPossible: 120, unit: 'creadas' },
+  fichasClinicas: { label: 'Fichas clínicas', maxPossible: 120, unit: 'total creadas' },
 };
 
 /**
@@ -671,14 +671,22 @@ async function _derivarDesdeSerie(nombreCliente, data) {
   const hoyReservas = data.reservas ?? null;
   const hoyFichas = data.fichasClinicas ?? null;
 
-  const [hace7, hace14, hace30] = await Promise.all([
+  const [hace7, hace14] = await Promise.all([
     _puntoSerieHace(nombreCliente, 7),
     _puntoSerieHace(nombreCliente, 14),
-    _puntoSerieHace(nombreCliente, 30),
   ]);
 
-  const reservas = _delta(hoyReservas, hace30?.reservas);
-  const fichasClinicas = _delta(hoyFichas, hace30?.fichas_clinicas);
+  // Reservas y fichas se reportan como ACUMULADO, no como ventana de 30 días.
+  //
+  // Un cliente nuevo arranca con la base en cero, así que su acumulado ES su
+  // actividad desde que empezó: es exactamente lo que queremos ver. Y con la
+  // resta de 30 días no habría nada que mostrar durante el primer mes, que es
+  // justo cuando más importa saber si el cliente arrancó o se quedó quieto.
+  //
+  // La serie se sigue guardando igual: de ahí sale la tendencia semanal, que
+  // es la señal fina cuando ya hay historial.
+  const reservas = hoyReservas === null || hoyReservas === undefined ? null : Number(hoyReservas);
+  const fichasClinicas = hoyFichas === null || hoyFichas === undefined ? null : Number(hoyFichas);
 
   // Tendencia: compara la actividad de los últimos 7 días contra los 7
   // anteriores. Necesita dos puntos previos, por eso pide 14 días de serie.
