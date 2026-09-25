@@ -40,6 +40,10 @@ router.post('/teams',               SynapseController.createTeam);
 router.put('/teams/:id',            SynapseController.updateTeam);
 router.delete('/teams/:id',         SynapseController.deleteTeam);
 
+// Columnas ocultas por equipo (los estados son globales; esto filtra la vista)
+router.get('/teams/:id/estados-ocultos',  SynapseController.getTeamEstadosOcultos);
+router.put('/teams/:id/estados-ocultos',  SynapseController.setTeamEstadosOcultos);
+
 // Meta (datos de referencia para formularios)
 router.get('/meta/proyectos',       SynapseController.getProyectosParaSynapse);
 router.get('/meta/socios',          SynapseController.getSociosParaSynapse);

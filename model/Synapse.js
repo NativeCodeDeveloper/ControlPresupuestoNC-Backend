@@ -311,6 +311,70 @@ export async function deleteTeam(id) {
     await db().ejecutarQuery(`UPDATE synapse_teams SET activo = 0 WHERE id_team = ?`, [id]);
 }
 
+// ── Columnas ocultas por equipo ───────────────────────────────────────────────
+//
+// Los estados del kanban son globales. Esta tabla guarda qué estados NO se
+// muestran en un equipo puntual. Se almacena lo oculto (no lo visible) para que
+// la ausencia de filas signifique "se ven todas", que es el comportamiento por
+// defecto y el que tenía el sistema antes de existir esta funcionalidad.
+
+export async function getTeamById(id) {
+    const rows = await db().ejecutarQuery(
+        `SELECT * FROM synapse_teams WHERE id_team = ? AND activo = 1`,
+        [id]
+    );
+    return rows?.[0] || null;
+}
+
+export async function getEstadosOcultos(id_team) {
+    const rows = await db().ejecutarQuery(
+        `SELECT id_estado FROM synapse_team_estados_ocultos WHERE id_team = ?`,
+        [id_team]
+    );
+    return (Array.isArray(rows) ? rows : []).map(r => r.id_estado);
+}
+
+/**
+ * Cuenta las tareas activas del equipo en los estados indicados.
+ * Devuelve solo los estados que tienen al menos una tarea, para poder avisar
+ * cuáles bloquean el ocultamiento y con cuántos tickets.
+ */
+export async function contarTareasPorEstado(id_team, idsEstado) {
+    if (!idsEstado.length) return [];
+    const placeholders = idsEstado.map(() => '?').join(', ');
+    const rows = await db().ejecutarQuery(
+        `SELECT e.id_estado, e.nombre, COUNT(*) AS total
+           FROM synapse_tareas t
+           INNER JOIN synapse_estados e ON t.id_estado = e.id_estado
+          WHERE t.activo = 1 AND t.id_team = ? AND t.id_estado IN (${placeholders})
+          GROUP BY e.id_estado, e.nombre`,
+        [id_team, ...idsEstado]
+    );
+    return Array.isArray(rows) ? rows : [];
+}
+
+/**
+ * Reemplaza por completo el set de estados ocultos del equipo.
+ * En transacción: si el INSERT falla, el DELETE no debe quedar aplicado o el
+ * equipo terminaría mostrando columnas que el usuario tenía ocultas.
+ */
+export async function setEstadosOcultos(id_team, idsEstado) {
+    await db().withTransaction(async (conn) => {
+        await conn.query(
+            `DELETE FROM synapse_team_estados_ocultos WHERE id_team = ?`,
+            [id_team]
+        );
+        if (idsEstado.length) {
+            const placeholders = idsEstado.map(() => '(?, ?)').join(', ');
+            const vals = idsEstado.flatMap(id => [id_team, id]);
+            await conn.query(
+                `INSERT INTO synapse_team_estados_ocultos (id_team, id_estado) VALUES ${placeholders}`,
+                vals
+            );
+        }
+    });
+}
+
 // ── Production Cockpit ────────────────────────────────────────────────────────
 
 export async function getCockpitData({ mes, anio } = {}) {

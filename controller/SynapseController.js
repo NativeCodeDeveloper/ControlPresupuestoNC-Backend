@@ -216,6 +216,56 @@ export default class SynapseController {
         } catch (e) { err(res, e); }
     }
 
+    // ── Columnas ocultas por equipo ────────────────────────────────────────────
+
+    static async getTeamEstadosOcultos(req, res) {
+        try {
+            const team = await Synapse.getTeamById(req.params.id);
+            if (!team) return res.status(404).json({ error: 'Equipo no encontrado.' });
+            res.json(await Synapse.getEstadosOcultos(req.params.id));
+        } catch (e) { err(res, e); }
+    }
+
+    static async setTeamEstadosOcultos(req, res) {
+        try {
+            const { ids } = req.body;
+            if (!Array.isArray(ids)) return res.status(400).json({ error: 'Se requiere un array de ids.' });
+
+            const team = await Synapse.getTeamById(req.params.id);
+            if (!team) return res.status(404).json({ error: 'Equipo no encontrado.' });
+
+            const idsOcultar = [...new Set(
+                ids.map(Number).filter(n => Number.isInteger(n) && n > 0)
+            )];
+
+            // El tablero no puede quedar sin ninguna columna visible.
+            const estados = await Synapse.getEstados();
+            const visibles = estados.filter(e => !idsOcultar.includes(e.id_estado));
+            if (estados.length && !visibles.length) {
+                return res.status(400).json({ error: 'Debe quedar al menos una columna visible.' });
+            }
+
+            // Una columna con tickets del equipo no se puede ocultar: desaparecerían
+            // de la vista sin aviso. Se valida en el servidor y no solo en el front
+            // porque dos personas pueden estar editando el mismo tablero a la vez.
+            const conTareas = await Synapse.contarTareasPorEstado(req.params.id, idsOcultar);
+            if (conTareas.length) {
+                return res.status(409).json({
+                    error: 'Hay columnas con tickets dentro.',
+                    columnas: conTareas.map(c => ({
+                        id_estado: c.id_estado,
+                        nombre: c.nombre,
+                        total: Number(c.total),
+                    })),
+                });
+            }
+
+            await Synapse.setEstadosOcultos(req.params.id, idsOcultar);
+            emitUpdate('ncf:update');
+            res.json({ ok: true, ids: idsOcultar });
+        } catch (e) { err(res, e); }
+    }
+
     // ── Meta ───────────────────────────────────────────────────────────────────
 
     static async getProyectosParaSynapse(req, res) {
