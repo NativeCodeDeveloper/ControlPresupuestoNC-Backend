@@ -323,12 +323,18 @@ function _normalizeDtesAlDia(alDia) {
 // diasSinActividad (recencia) y tendenciaSemanal (¿la actividad está
 // cayendo AHORA?) pasan a ser las señales dominantes (60% combinado); los
 // acumulados mensuales quedan como contexto de volumen, no como alerta.
+// pacientes entra con 15: registrar un paciente es señal de atención REAL, más
+// directa que la ficha (que puede no llenarse) y que la reserva (que puede no
+// concretarse). Para dejarle espacio bajan diasSinActividad 35→30,
+// tendenciaSemanal 25→20 y confirmaciones 15→10; la recencia sigue siendo la
+// señal dominante y el total se mantiene en 100.
 const USO_WEIGHTS = {
-  diasSinActividad: 35,
-  tendenciaSemanal: 25,
+  diasSinActividad: 30,
+  tendenciaSemanal: 20,
   reservas: 15,
-  confirmaciones: 15,
+  confirmaciones: 10,
   fichasClinicas: 10,
+  pacientes: 15,
 };
 
 function _buildUsoPlaceholderMetrics() {
@@ -358,6 +364,11 @@ function _buildUsoPlaceholderMetrics() {
       value: 0, weight: USO_WEIGHTS.fichasClinicas,
       maxPossible: 300, normalizedValue: 0, contribution: 0, unit: 'total creadas',
     },
+    pacientes: {
+      id: 'pacientes', label: 'Pacientes registrados', category: 'uso',
+      value: 0, weight: USO_WEIGHTS.pacientes,
+      maxPossible: 400, normalizedValue: 0, contribution: 0, unit: 'total',
+    },
   };
 }
 
@@ -370,6 +381,7 @@ const USO_METRIC_DISPLAY = {
   reservas: { label: 'Reservas', maxPossible: 600, unit: 'total' },
   confirmaciones: { label: 'Confirmaciones', maxPossible: 100, unit: '%' },
   fichasClinicas: { label: 'Fichas clínicas', maxPossible: 300, unit: 'total creadas' },
+  pacientes: { label: 'Pacientes registrados', maxPossible: 400, unit: 'total' },
 };
 
 /**
@@ -396,6 +408,7 @@ function _buildFinanceScore(finance, valorCeiling, uso = null) {
     reservas: uso ? _normalizeReservas(uso.reservas) : null,
     confirmaciones: uso ? _normalizeConfirmaciones(uso.confirmaciones) : null,
     fichasClinicas: uso ? _normalizeFichasClinicas(uso.fichas_clinicas) : null,
+    pacientes: uso ? _normalizePacientes(uso.pacientes) : null,
   };
 
   // Pesos presentes: PAGA/VALOR siempre están (Finance siempre tiene estos
@@ -459,6 +472,7 @@ function _buildFinanceScore(finance, valorCeiling, uso = null) {
     reservas: uso?.reservas ?? null,
     confirmaciones: uso?.confirmaciones ?? null,
     fichasClinicas: uso?.fichas_clinicas ?? null,
+    pacientes: uso?.pacientes ?? null,
   };
 
   const usoPlaceholder = _buildUsoPlaceholderMetrics();
@@ -559,6 +573,14 @@ function _normalizeConfirmaciones(pct) {
   return Math.round(Math.max(0, Math.min(100, pct)));
 }
 
+// Mismo criterio que _normalizeReservas. Techo 400: una clínica registra menos
+// pacientes que reservas (un paciente vuelve varias veces).
+function _normalizePacientes(count) {
+  if (count === null || count === undefined) return null;
+  const techo = 400;
+  return Math.round(Math.min(100, (Math.sqrt(count) / Math.sqrt(techo)) * 100));
+}
+
 // Mismo criterio que _normalizeReservas. Techo 300: se crean menos fichas que
 // reservas (no toda cita genera ficha), así que el techo va más abajo.
 function _normalizeFichasClinicas(count) {
@@ -619,17 +641,19 @@ async function _guardarPuntoSerie(nombreCliente, data) {
   try {
     await db().ejecutarQuery(`
       INSERT INTO health_score_uso_serie
-        (nombre_cliente, fecha, reservas, fichas_clinicas, confirmaciones)
-      VALUES (?, CURDATE(), ?, ?, ?)
+        (nombre_cliente, fecha, reservas, fichas_clinicas, confirmaciones, pacientes)
+      VALUES (?, CURDATE(), ?, ?, ?, ?)
       ON DUPLICATE KEY UPDATE
         reservas = VALUES(reservas),
         fichas_clinicas = VALUES(fichas_clinicas),
-        confirmaciones = VALUES(confirmaciones)
+        confirmaciones = VALUES(confirmaciones),
+        pacientes = VALUES(pacientes)
     `, [
       nombreCliente,
       data.reservas ?? null,
       data.fichasClinicas ?? null,
       data.confirmaciones ?? null,
+      data.pacientes ?? null,
     ]);
   } catch (error) {
     // La serie es un apoyo, no el dato principal: si falla (tabla sin migrar,
@@ -711,7 +735,10 @@ async function _derivarDesdeSerie(nombreCliente, data) {
     tendenciaSemanal = Math.round(((semanaActual - semanaPrevia) / semanaPrevia) * 100);
   }
 
-  return { reservas, fichasClinicas, tendenciaSemanal };
+  const pacientes = data.pacientes === null || data.pacientes === undefined
+    ? null : Number(data.pacientes);
+
+  return { reservas, fichasClinicas, pacientes, tendenciaSemanal };
 }
 
 /**
@@ -754,14 +781,15 @@ export async function refreshUsoMetricsCache() {
 
         await db().ejecutarQuery(`
           INSERT INTO health_score_uso_cache
-            (nombre_cliente, dias_sin_actividad, tendencia_semanal, reservas, confirmaciones, fichas_clinicas, fetched_at, ultimo_error)
-          VALUES (?, ?, ?, ?, ?, ?, NOW(), NULL)
+            (nombre_cliente, dias_sin_actividad, tendencia_semanal, reservas, confirmaciones, fichas_clinicas, pacientes, fetched_at, ultimo_error)
+          VALUES (?, ?, ?, ?, ?, ?, ?, NOW(), NULL)
           ON DUPLICATE KEY UPDATE
             dias_sin_actividad = VALUES(dias_sin_actividad),
             tendencia_semanal = VALUES(tendencia_semanal),
             reservas = VALUES(reservas),
             confirmaciones = VALUES(confirmaciones),
             fichas_clinicas = VALUES(fichas_clinicas),
+            pacientes = VALUES(pacientes),
             fetched_at = VALUES(fetched_at),
             ultimo_error = NULL
         `, [
@@ -771,6 +799,7 @@ export async function refreshUsoMetricsCache() {
           derivado.reservas,
           data.confirmaciones ?? null,
           derivado.fichasClinicas,
+          derivado.pacientes,
         ]);
 
         return cliente.nombre_cliente;
