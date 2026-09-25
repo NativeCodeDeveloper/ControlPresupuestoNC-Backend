@@ -62,6 +62,38 @@ async function getCancelledClients() {
 }
 
 /**
+ * Resuelve la API key con la que Finance llama a /health-metrics de un cliente.
+ *
+ * Los backends de Agenda Clínica se despliegan ANTES de tener cliente asignado
+ * (estados "URL disponible" / "Desplegado sin cliente" en el Backserver), y su
+ * .env se configura en ese momento. Si cada cliente necesitara su propia key,
+ * asignarle un backend obligaría a volver a editar ese .env y reiniciar un
+ * proceso que ya está corriendo — justo lo que hay que evitar con 100 clientes.
+ *
+ * Por eso la key por defecto es GLOBAL: la misma en todos los backends, puesta
+ * una sola vez al aprovisionar. Asignar un cliente no toca el backend.
+ *
+ * La key por servidor sigue existiendo y tiene prioridad: sirve para rotar la
+ * de un cliente puntual sin tocar a los otros 99. Si no tiene, se usa la global.
+ *
+ * Qué protege esto: contadores agregados de uso (cuántas reservas, cuántas
+ * fichas). No expone datos de pacientes, así que compartir la key entre
+ * instancias es un riesgo acotado y proporcional a la operación que evita.
+ */
+function _resolverApiKey(apiKeyCifrada, nombreCliente) {
+  if (apiKeyCifrada) {
+    try {
+      return decryptApiKey(apiKeyCifrada);
+    } catch (error) {
+      console.error(`[healthScoreService] API key propia ilegible para ${nombreCliente}:`, error.message);
+      // Cae a la global en vez de fallar: una key corrupta no debe dejar
+      // ciego el health score de ese cliente.
+    }
+  }
+  return process.env.HEALTH_METRICS_API_KEY || null;
+}
+
+/**
  * Obtiene configuración de Agenda Clínica para un cliente.
  * Devuelve la URL del backend y la API key desencriptada.
  *
@@ -86,16 +118,8 @@ async function getClientConfig(nombreCliente) {
 
     const config = rows[0];
 
-    // Desencriptar API key (solo en memoria)
-    let apiKey = null;
-    if (config.api_key_encrypted) {
-      try {
-        apiKey = decryptApiKey(config.api_key_encrypted);
-      } catch (error) {
-        console.error(`[healthScoreService.getClientConfig] Error desencriptando API key para ${nombreCliente}:`, error.message);
-        // Continuar sin API key
-      }
-    }
+    // Key propia del servidor, o la global si no tiene (ver _resolverApiKey)
+    const apiKey = _resolverApiKey(config.api_key_encrypted, nombreCliente);
 
     return {
       ruta_backend: config.ruta_backend,
@@ -698,16 +722,16 @@ export async function refreshUsoMetricsCache() {
       FROM synapse_servidores s
       INNER JOIN proyectos p ON s.id_proyecto = p.id_proyecto
       WHERE s.ruta_backend IS NOT NULL AND s.ruta_backend != ''
-        AND s.api_key_encrypted IS NOT NULL AND s.api_key_encrypted != ''
     `, []);
+    // Ya no se exige api_key_encrypted: la mayoría de los clientes usa la key
+    // global y no tiene una propia guardada. Los que no tengan ninguna fallan
+    // individualmente con un error claro, sin frenar al resto.
 
     const resultados = await Promise.allSettled(
       (Array.isArray(clientes) ? clientes : []).map(async (cliente) => {
-        let apiKey;
-        try {
-          apiKey = decryptApiKey(cliente.api_key_encrypted);
-        } catch (error) {
-          throw new Error(`No se pudo desencriptar la API key: ${error.message}`);
+        const apiKey = _resolverApiKey(cliente.api_key_encrypted, cliente.nombre_cliente);
+        if (!apiKey) {
+          throw new Error('Sin API key: el servidor no tiene una propia y falta HEALTH_METRICS_API_KEY en el entorno de Finance');
         }
 
         const data = await _fetchAgendaClinicaMetrics({

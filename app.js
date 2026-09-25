@@ -337,15 +337,24 @@ httpServer.listen(PORT, () => {
         healthScoreHandle.unref();
     }
 
-    // CRON HEALTH SCORE USO: una vez al día, llama a /health-metrics de cada
-    // cliente con API key configurada (Agenda Clínica) y guarda el resultado
-    // en health_score_uso_cache. Un cliente caído no rompe a los demás — ver
-    // refreshUsoMetricsCache (Promise.allSettled + timeout por llamada).
+    // CRON HEALTH SCORE USO: cada hora llama a /health-metrics de cada cliente
+    // de Agenda Clínica y guarda el resultado en health_score_uso_cache.
+    //
+    // Cada hora y no una vez al día porque la señal que más pesa es "días sin
+    // actividad": con refresco diario, un cliente que vuelve a entrar puede
+    // seguir marcado como inactivo hasta 24 horas después. El endpoint del
+    // otro lado son cuatro COUNT, así que el costo es despreciable.
+    //
+    // La serie diaria no se duplica: su clave primaria es (cliente, fecha), así
+    // que las corridas de un mismo día actualizan el punto en vez de agregarlo.
+    //
+    // Un cliente caído no rompe a los demás — ver refreshUsoMetricsCache
+    // (Promise.allSettled + timeout de 8s por llamada).
     const usoMetricsHandle = setInterval(() => {
         refreshUsoMetricsCache().catch((err) => {
             console.error('[HEALTH SCORE USO] Error inesperado en cron:', err?.message || err);
         });
-    }, 24 * 60 * 60 * 1000);
+    }, 60 * 60 * 1000);
 
     if (typeof usoMetricsHandle.unref === "function") {
         usoMetricsHandle.unref();
