@@ -346,7 +346,7 @@ function _buildUsoPlaceholderMetrics() {
     reservas: {
       id: 'reservas', label: 'Reservas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.reservas,
-      maxPossible: 150, normalizedValue: 0, contribution: 0, unit: 'total',
+      maxPossible: 600, normalizedValue: 0, contribution: 0, unit: 'total',
     },
     confirmaciones: {
       id: 'confirmaciones', label: 'Confirmaciones', category: 'uso',
@@ -356,7 +356,7 @@ function _buildUsoPlaceholderMetrics() {
     fichasClinicas: {
       id: 'fichasClinicas', label: 'Fichas clínicas', category: 'uso',
       value: 0, weight: USO_WEIGHTS.fichasClinicas,
-      maxPossible: 120, normalizedValue: 0, contribution: 0, unit: 'total creadas',
+      maxPossible: 300, normalizedValue: 0, contribution: 0, unit: 'total creadas',
     },
   };
 }
@@ -367,9 +367,9 @@ function _buildUsoPlaceholderMetrics() {
 const USO_METRIC_DISPLAY = {
   diasSinActividad: { label: 'Días sin actividad', maxPossible: 60, unit: 'días sin reservar/ingresar' },
   tendenciaSemanal: { label: 'Tendencia semanal', maxPossible: 100, unit: '% vs semana anterior' },
-  reservas: { label: 'Reservas', maxPossible: 150, unit: 'total' },
+  reservas: { label: 'Reservas', maxPossible: 600, unit: 'total' },
   confirmaciones: { label: 'Confirmaciones', maxPossible: 100, unit: '%' },
-  fichasClinicas: { label: 'Fichas clínicas', maxPossible: 120, unit: 'total creadas' },
+  fichasClinicas: { label: 'Fichas clínicas', maxPossible: 300, unit: 'total creadas' },
 };
 
 /**
@@ -538,9 +538,20 @@ function _normalizeTendenciaSemanal(pct) {
   return Math.round(50 + clamped / 2);
 }
 
+// Escala de raíz cuadrada, la misma idea que _normalizeValorFacturado.
+//
+// Con escala lineal y tope 150, una clínica con 500 reservas saturaba en 100 y
+// se veía igual que una con 150 — y hay clientes con más de 500. Subir el tope
+// sin cambiar la curva empeoraba el otro extremo: un cliente nuevo con 40
+// reservas reales marcaría 8 puntos y parecería inactivo.
+//
+// Con raíz cuadrada y techo 600: 40 reservas dan 26 pts, 166 dan 53, 600 dan
+// 100. Los primeros pasos de un cliente nuevo se notan, y los grandes siguen
+// teniendo recorrido antes de saturar.
 function _normalizeReservas(count) {
   if (count === null || count === undefined) return null;
-  return Math.round(Math.min(100, (count / 150) * 100));
+  const techo = 600;
+  return Math.round(Math.min(100, (Math.sqrt(count) / Math.sqrt(techo)) * 100));
 }
 
 function _normalizeConfirmaciones(pct) {
@@ -548,9 +559,12 @@ function _normalizeConfirmaciones(pct) {
   return Math.round(Math.max(0, Math.min(100, pct)));
 }
 
+// Mismo criterio que _normalizeReservas. Techo 300: se crean menos fichas que
+// reservas (no toda cita genera ficha), así que el techo va más abajo.
 function _normalizeFichasClinicas(count) {
   if (count === null || count === undefined) return null;
-  return Math.round(Math.min(100, (count / 120) * 100));
+  const techo = 300;
+  return Math.round(Math.min(100, (Math.sqrt(count) / Math.sqrt(techo)) * 100));
 }
 
 // ── Caché de métricas de USO (Agenda Clínica) ──────────────────────────────
