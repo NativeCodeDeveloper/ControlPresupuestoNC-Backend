@@ -376,7 +376,10 @@ export default class SynapseController {
             const { ruta_backend, estado, id_proyecto, version, notas, api_key } = req.body;
             if (!ruta_backend) return res.status(400).json({ error: 'ruta_backend es requerido.' });
 
-            // Cifrar API key antes de guardar
+            // La API key ya no se configura por servidor: todos los backends de
+            // Agenda Clínica comparten HEALTH_METRICS_API_KEY, puesta en su .env
+            // al desplegarlos. Se sigue aceptando por si alguna vez hay que
+            // rotar la de un cliente puntual, pero no hay campo en la UI.
             let api_key_encrypted = null;
             if (api_key && api_key.trim()) {
                 api_key_encrypted = encryptApiKey(api_key.trim());
