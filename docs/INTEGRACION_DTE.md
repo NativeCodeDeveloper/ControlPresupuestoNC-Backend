@@ -474,7 +474,7 @@ ambas firmas son válidas) — no seguir pidiendo CAF nuevos para seguir proband
 
 ### 4.2 Fase 2 — Backend (persistencia + orquestación) — COMPLETO
 
-Tablas creadas en producción (`migration_dte_documentos.sql`, ya ejecutada): `dte_documentos`,
+Tablas creadas en producción (`sql/2026-07-18_dte_documentos.sql`, ya ejecutada): `dte_documentos`,
 `dte_folios_consumidos`, y **`dte_caf`** (metadata de los CAF cargados: rango, ruta del archivo,
 ambiente — permite tener varios CAF activos y saber cuál usar).
 

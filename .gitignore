@@ -97,6 +97,9 @@ certs/
 *.db
 *.bak
 *.sql
+# ...pero las migraciones de sql/ SI se versionan: son el historial del
+# esquema. La regla *.sql de arriba es para volcados y respaldos.
+!sql/*.sql
 *.tar
 *.zip
 *.gz

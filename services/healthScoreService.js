@@ -796,7 +796,7 @@ export async function getStats() {
  * cartera. Idempotente — se puede llamar varias veces el mismo día (el cron
  * corre cada 6h) sin generar duplicados, gracias al UNIQUE KEY en `fecha`;
  * cada llamada simplemente deja el snapshot más reciente de ese día.
- * Requiere la tabla health_score_historial (ver migrations/health_score_historial.sql).
+ * Requiere la tabla health_score_historial (ver sql/2026-08-04_health_score_historial.sql).
  */
 export async function capturePortfolioSnapshot() {
   try {
