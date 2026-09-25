@@ -401,14 +401,19 @@ export default class SynapseController {
             // Preparar datos para actualizar
             const updateData = { ruta_backend, estado, id_proyecto, version, notas };
 
-            // Si se envía una API key, cifrarla
-            if (api_key !== undefined) {
-                if (api_key && api_key.trim()) {
-                    updateData.api_key_encrypted = encryptApiKey(api_key.trim());
-                } else {
-                    // Si envían string vacío, eliminar la API key
-                    updateData.api_key_encrypted = null;
-                }
+            // Solo se toca la API key cuando llega un valor real.
+            //
+            // El formulario nunca muestra la key guardada (se almacena cifrada
+            // y no se descifra para mostrarla), así que al editar cualquier
+            // otro campo —una nota, el estado, la URL— la key llega vacía.
+            // Tratar ese vacío como "eliminar" borraba la key en silencio en
+            // cada edición, y era la razón de que casi ningún servidor
+            // conservara la suya.
+            //
+            // Para cambiarla se escribe una nueva; no hay caso de uso para
+            // dejar un servidor sin key desde la UI.
+            if (api_key && api_key.trim()) {
+                updateData.api_key_encrypted = encryptApiKey(api_key.trim());
             }
 
             await Synapse.updateServidor(req.params.id, updateData);

@@ -581,6 +581,108 @@ async function _getUsoMetricsForClient(nombreCliente) {
   }
 }
 
+// ── Serie diaria de uso (para derivar ventanas y tendencia) ────────────────
+// Agenda Clínica no guarda la fecha de creación de reservas ni de fichas, así
+// que su endpoint devuelve ACUMULADOS. Un acumulado nunca baja y por lo tanto
+// no sirve para medir salud. La actividad se obtiene restando el acumulado de
+// hoy contra el de hace N días, guardados en health_score_uso_serie.
+
+/**
+ * Guarda el punto del día para un cliente. Una fila por cliente y fecha: si el
+ * cron corre dos veces el mismo día, la segunda pisa a la primera en vez de
+ * duplicar el punto y ensuciar las restas.
+ */
+async function _guardarPuntoSerie(nombreCliente, data) {
+  try {
+    await db().ejecutarQuery(`
+      INSERT INTO health_score_uso_serie
+        (nombre_cliente, fecha, reservas, fichas_clinicas, confirmaciones)
+      VALUES (?, CURDATE(), ?, ?, ?)
+      ON DUPLICATE KEY UPDATE
+        reservas = VALUES(reservas),
+        fichas_clinicas = VALUES(fichas_clinicas),
+        confirmaciones = VALUES(confirmaciones)
+    `, [
+      nombreCliente,
+      data.reservas ?? null,
+      data.fichasClinicas ?? null,
+      data.confirmaciones ?? null,
+    ]);
+  } catch (error) {
+    // La serie es un apoyo, no el dato principal: si falla (tabla sin migrar,
+    // por ejemplo) el cron debe seguir guardando la caché igual.
+    console.error('[healthScoreService._guardarPuntoSerie]', error.message);
+  }
+}
+
+/**
+ * Busca el acumulado más reciente ANTERIOR O IGUAL a hace `diasAtras` días.
+ * Se busca el más cercano y no la fecha exacta a propósito: si el cron no
+ * corrió un día, un hueco en la serie no debe anular la métrica entera.
+ */
+async function _puntoSerieHace(nombreCliente, diasAtras) {
+  const dias = Number(diasAtras);
+  if (!Number.isInteger(dias) || dias < 0) return null;
+  try {
+    const rows = await db().ejecutarQuery(`
+      SELECT reservas, fichas_clinicas
+        FROM health_score_uso_serie
+       WHERE nombre_cliente = ?
+         AND fecha <= CURDATE() - INTERVAL ${dias} DAY
+       ORDER BY fecha DESC
+       LIMIT 1
+    `, [nombreCliente]);
+    return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
+  } catch (error) {
+    console.error('[healthScoreService._puntoSerieHace]', error.message);
+    return null;
+  }
+}
+
+/** Resta dos acumulados. Nunca negativo: las reservas se pueden borrar
+ *  físicamente en Agenda Clínica, y un "menos 3 reservas" no es actividad. */
+function _delta(actual, anterior) {
+  if (actual === null || actual === undefined) return null;
+  if (anterior === null || anterior === undefined) return null;
+  return Math.max(0, Number(actual) - Number(anterior));
+}
+
+/**
+ * Convierte los acumulados de hoy en lo que el score consume:
+ *   - reservas / fichasClinicas → actividad de los últimos 30 días
+ *   - tendenciaSemanal → % de cambio entre la última semana y la anterior
+ *
+ * Devuelve null en lo que todavía no se pueda calcular por falta de historia.
+ * null y 0 significan cosas distintas: null sale del score sin penalizar,
+ * un 0 sí penaliza. Durante los primeros días tras conectar a un cliente
+ * estas métricas van en null hasta que la serie tenga profundidad suficiente
+ * (30 días para las ventanas, 14 para la tendencia). Es correcto, no es un bug.
+ */
+async function _derivarDesdeSerie(nombreCliente, data) {
+  const hoyReservas = data.reservas ?? null;
+  const hoyFichas = data.fichasClinicas ?? null;
+
+  const [hace7, hace14, hace30] = await Promise.all([
+    _puntoSerieHace(nombreCliente, 7),
+    _puntoSerieHace(nombreCliente, 14),
+    _puntoSerieHace(nombreCliente, 30),
+  ]);
+
+  const reservas = _delta(hoyReservas, hace30?.reservas);
+  const fichasClinicas = _delta(hoyFichas, hace30?.fichas_clinicas);
+
+  // Tendencia: compara la actividad de los últimos 7 días contra los 7
+  // anteriores. Necesita dos puntos previos, por eso pide 14 días de serie.
+  let tendenciaSemanal = null;
+  const semanaActual = _delta(hoyReservas, hace7?.reservas);
+  const semanaPrevia = _delta(hace7?.reservas, hace14?.reservas);
+  if (semanaActual !== null && semanaPrevia !== null && semanaPrevia > 0) {
+    tendenciaSemanal = Math.round(((semanaActual - semanaPrevia) / semanaPrevia) * 100);
+  }
+
+  return { reservas, fichasClinicas, tendenciaSemanal };
+}
+
 /**
  * Cron diario: recorre los clientes con ruta_backend + api_key configurados,
  * llama a su /health-metrics, y guarda el resultado en health_score_uso_cache.
@@ -613,6 +715,12 @@ export async function refreshUsoMetricsCache() {
           api_key: apiKey,
         });
 
+        // Agenda Clínica manda acumulados (no guarda fecha de creación de sus
+        // filas). Se archiva el punto del día y de la serie salen las ventanas
+        // de 30 días y la tendencia semanal.
+        await _guardarPuntoSerie(cliente.nombre_cliente, data);
+        const derivado = await _derivarDesdeSerie(cliente.nombre_cliente, data);
+
         await db().ejecutarQuery(`
           INSERT INTO health_score_uso_cache
             (nombre_cliente, dias_sin_actividad, tendencia_semanal, reservas, confirmaciones, fichas_clinicas, fetched_at, ultimo_error)
@@ -628,10 +736,10 @@ export async function refreshUsoMetricsCache() {
         `, [
           cliente.nombre_cliente,
           data.diasSinActividad ?? null,
-          data.tendenciaSemanal ?? null,
-          data.reservas ?? null,
+          derivado.tendenciaSemanal,
+          derivado.reservas,
           data.confirmaciones ?? null,
-          data.fichasClinicas ?? null,
+          derivado.fichasClinicas,
         ]);
 
         return cliente.nombre_cliente;

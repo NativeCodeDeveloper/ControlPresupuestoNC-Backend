@@ -7,6 +7,10 @@
 > endpoint nuevo de tu lado. Nada de lo de acá requiere tocar tu backend salvo agregar este único
 > endpoint.
 
+> Actualizado 2026-09-25: los contadores pasaron de "últimos 30 días" a **acumulados**, porque
+> la base de Agenda Clínica no guarda la fecha de creación de reservas ni fichas y migrar 49
+> bases de clientes se descartó. Finance archiva el acumulado diario y deriva las ventanas.
+
 ---
 
 ## 1. Por qué esto importa (contexto de negocio)
@@ -49,20 +53,20 @@ Si el token no es válido: `401`.
 ```json
 {
   "diasSinActividad": 4,
-  "tendenciaSemanal": -35,
-  "reservas": 42,
+  "tendenciaSemanal": null,
+  "reservas": 1842,
   "confirmaciones": 78,
-  "fichasClinicas": 11
+  "fichasClinicas": 613
 }
 ```
 
 | Campo | Tipo | Definición de negocio |
 |---|---|---|
-| `diasSinActividad` | `number` | Días desde la última reserva creada **o** el último ingreso del cliente a la plataforma (lo que sea más reciente). Si nunca ha entrado, mandar `null`. **Esta es la señal más importante — la que más pesa en el score.** |
-| `tendenciaSemanal` | `number` | % de cambio en reservas: `(reservas últimos 7 días − reservas 7 días anteriores) / reservas 7 días anteriores × 100`. Negativo = está cayendo. Si no hay actividad en el período anterior para calcular %, mandar `null` en vez de forzar un número. |
-| `reservas` | `number` | Cantidad de reservas creadas en los últimos 30 días (contexto de volumen, no es la señal de alerta). |
-| `confirmaciones` | `number` | % de reservas de los últimos 30 días con `estadoReserva` en `asiste` o `finalizado` (asistencia real, no solo "reservada"/"confirmada"). |
-| `fichasClinicas` | `number` | Cantidad de fichas clínicas creadas en los últimos 30 días. |
+| `diasSinActividad` | `number` | Días desde el último ingreso registrado en la tabla `registro_accesos` (ver `health-score-implementacion.md`). Si nunca se registró un acceso, mandar `null`. **Es la señal más importante — la que más pesa en el score.** |
+| `tendenciaSemanal` | `null` | **No la calcula Agenda Clínica.** Finance la deriva de su serie diaria restando acumulados. Mandar siempre `null`. |
+| `reservas` | `number` | **Total acumulado** de reservas visibles (`estadoPeticion <> 0`). No se acota por fecha: la base no guarda cuándo se creó la reserva, así que Finance archiva este total cada día y obtiene la actividad restando. |
+| `confirmaciones` | `number` | % de asistencia de las citas de los últimos 30 días, medido por `fechaInicio` (la fecha de la cita, que sí existe como columna). Solo citas ya ocurridas. Estados reales verificados en la base: `reservada`, `confirmada`, `anulada`, `no asiste`, `asiste` — **`finalizado` no existe**. |
+| `fichasClinicas` | `number` | **Total acumulado** de fichas activas (`estadoFicha <> 0`). Mismo criterio que `reservas`: Finance deriva la ventana de 30 días. |
 
 Cualquier campo que no se pueda calcular: mandar `null`, no `0` — un `0` real (ej. "cero reservas
 esta semana") y un `0` por falta de datos son cosas distintas, y Finance necesita distinguirlos
