@@ -273,11 +273,10 @@ async function getClientFinanceMetrics(nombreCliente) {
 // real y accionable para priorizar (cliente atrasado en pago sale
 // crítico/en riesgo de verdad), no un placeholder.
 //
-// dtesAlDia queda FUERA del score por ahora — pedido explícito del usuario:
-// la verificación de DTE todavía no está integrada para este flujo, así que
-// no es un dato confiable para pesar en el status. Se sigue mostrando en la
-// tarjeta (bloque Pagos) como informativo, solo que no cuenta. Reactivar
-// agregándolo de vuelta a SCORE_WEIGHTS cuando esté listo.
+// dtesAlDia se retiró por completo de Health Score: ya estaba fuera del
+// cálculo (no pesaba) y como fila informativa solo ocupaba espacio sin
+// ayudar a decidir a quién llamar. El estado de los DTE se revisa en su
+// propio módulo, no acá.
 //
 // valorFacturado SÍ entra al score, pero con peso chico (15) a propósito:
 // se probó con su peso "de manual" (20/40 ≈ 57% de lo que hoy pesa) y un
@@ -290,14 +289,7 @@ async function getClientFinanceMetrics(nombreCliente) {
 // que sumen 100) — así sacar/meter una métrica del score no rompe el techo
 // de 100 puntos ni obliga a recalcular a mano el resto de los pesos.
 //
-// DTES_DISPLAY_WEIGHT es el peso original de dtesAlDia en
-// control-Front/.../healthScoreConstants.js — solo para mostrar su barra en
-// la UI (en gris, countsTowardScore:false), no pesa en el score. Cuando se
-// conecte Agenda Clínica, reemplazar SCORE_WEIGHTS por el cálculo completo
-// (USO+VALOR+PAGA) con los pesos originales — ver _fetchAgendaClinicaMetrics
-// más abajo, ya dejado listo para activar.
 const SCORE_WEIGHTS = { estadoPagos: 57, morosidad: 28, valorFacturado: 15 };
-const DTES_DISPLAY_WEIGHT = 5;
 const SCORE_THRESHOLDS = { HEALTHY: 70, WARNING: 40 };
 
 function _normalizeValorFacturado(monto, ceiling) {
@@ -456,13 +448,6 @@ function _buildFinanceScore(finance, valorCeiling, uso = null) {
       maxPossible: 90, normalizedValue: normalized.morosidad,
       contribution: Math.round((normalized.morosidad * scoreWeightPercent('morosidad')) / 100),
       unit: 'días atraso', countsTowardScore: true,
-    },
-    dtesAlDia: {
-      id: 'dtesAlDia', label: 'DTEs al día', category: 'paga',
-      value: finance.dtesAlDia, weight: DTES_DISPLAY_WEIGHT,
-      maxPossible: 1, normalizedValue: normalized.dtesAlDia,
-      contribution: Math.round((normalized.dtesAlDia * DTES_DISPLAY_WEIGHT) / 100),
-      unit: '', countsTowardScore: false,
     },
   };
 
